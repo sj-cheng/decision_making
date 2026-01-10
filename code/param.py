@@ -10,18 +10,19 @@ class Param:
 		self.num_trials = 5 
 
 		# names 
-		self.problem_name = "example8" # e.g. example1, example2, example3, ...
+		self.problem_name = "example6" # e.g. example1, example2, example3, ...
 		self.solver_name = "C_PUCT_V1" # e.g. Empty, DARE, PUCT_V0, C_PUCT_V0, PUCT_V1, ...
 		self.value_oracle_name = "deterministic" # ["deterministic","gaussian"]
 		self.policy_oracle_name = "gaussian" # ["deterministic","gaussian"]
 
 		# oracles 
 		oracles_on = True
-		# dirname = "../current/models"
-		dirname = "/home/ben/projects/decision_making/saved/example9"
+		#dirname = "../current/models"
+		dirname = "/home/sjc/NTE/decision_making/current/models"
+		#dirname = "/home/ben/projects/decision_making/saved/example9"
 		# dirname = "/home/ben/projects/decision_making/saved/example6"
 
-		n = 2 # num robots 
+		n = 1 # num robots 
 		l = 0 # learning iteration 
 		if oracles_on:
 			self.policy_oracle_paths = ["{}/model_policy_l{}_i{}.pt".format(dirname,l,i) for i in range(n)]	

@@ -164,8 +164,8 @@ if __name__ == '__main__':
 	for sim_result in sim_results:
 		plotter.plot_sim_result(sim_result)
 		sim_result["instance"]["problem"].render(states=sim_result["states"])
-		if param.pretty_plot_on and hasattr(sim_result["instance"]["problem"], 'pretty_plot') :
-			sim_result["instance"]["problem"].pretty_plot(sim_result)
+		#if param.pretty_plot_on and hasattr(sim_result["instance"]["problem"], 'pretty_plot') :
+		#	sim_result["instance"]["problem"].pretty_plot(sim_result)
 
 	plotter.save_figs("../current/plots/run.pdf")
 	plotter.open_figs("../current/plots/run.pdf")
