@@ -34,17 +34,17 @@ beta_value = 0.5
 parallel_on = True
 solver_name = "C_PUCT_V1"
 # solver_name = "PUCT_V1"
-problem_name = "example6"
+problem_name = "example1"
 policy_oracle_name = "gaussian"
 value_oracle_name = "deterministic"
 
 dirname = "../current/models"
-plot_on= False
+plot_on= True
 # learning 
-L = 40
+L = 1
 mode = 1 # 0: weighted sum, 1: best child, 2: subsamples 
-num_D_pi = 10000
-#num_D_pi = 2000
+#num_D_pi = 10000
+num_D_pi = 2000
 # num_D_pi = 200
 num_pi_eval = 2000
 num_D_v = 10000
@@ -415,7 +415,7 @@ def eval_value(problem,l):
 	encodings = np.array(encodings).squeeze(axis=2)
 	if plot_on:
 		plotter.plot_value_dataset(problem,[[encodings,values]],["Eval"])
-		# plotter.plot_value_dataset(problem,[[states,values]],["Eval"])
+		plotter.plot_value_dataset(problem,[[states,values]],["Eval"])
 		plotter.save_figs("{}/value_eval_l{}.pdf".format(dirname,l))
 
 
@@ -452,7 +452,7 @@ def eval_policy(problem,l,robot):
 	actions = np.array(actions).squeeze(axis=2)
 	encodings = np.array(encodings).squeeze(axis=2)
 	if plot_on:
-		# plotter.plot_policy_dataset(problem,[[states,actions]],["Eval"],robot)
+		plotter.plot_policy_dataset(problem,[[states,actions]],["Eval"],robot)
 		plotter.plot_policy_dataset(problem,[[encodings,actions]],["Eval"],robot)
 		plotter.save_figs("{}/policy_eval_l{}_i{}.pdf".format(dirname,l,robot))
 
@@ -541,10 +541,10 @@ if __name__ == '__main__':
 			train_dataset_pi, test_dataset_pi = make_expert_demonstration_pi(\
 				problem,robot,policy_oracle,value_oracle)
 			train_model(problem,train_dataset_pi,test_dataset_pi,l,"policy",robot=robot)
-			#eval_policy(problem,l,robot) 
+			eval_policy(problem,l,robot) 
 
 		print('\t value training l/L: {}/{}'.format(l,L))
 		train_dataset_v, test_dataset_v = make_expert_demonstration_v(problem, l) 
 		train_model(problem,train_dataset_v,test_dataset_v,l,"value") 
-		#eval_value(problem,l)
+		eval_value(problem,l)
 		print('complete learning iteration: {}/{} in {}s'.format(l,L,time.time()-start_time))
