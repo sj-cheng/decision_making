@@ -34,7 +34,7 @@ beta_value = 0.5
 parallel_on = True
 solver_name = "C_PUCT_V1"
 # solver_name = "PUCT_V1"
-problem_name = "example1"
+problem_name = "example8"
 policy_oracle_name = "gaussian"
 value_oracle_name = "deterministic"
 
