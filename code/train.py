@@ -41,7 +41,7 @@ value_oracle_name = "deterministic"
 dirname = "../current/models"
 plot_on= True
 # learning 
-L = 1
+L = 2
 mode = 1 # 0: weighted sum, 1: best child, 2: subsamples 
 #num_D_pi = 10000
 num_D_pi = 2000

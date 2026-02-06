@@ -16,7 +16,7 @@ class Param:
 		self.policy_oracle_name = "gaussian" # ["deterministic","gaussian"]
 
 		# oracles 
-		oracles_on = False
+		oracles_on = True
 		dirname = "../current/models"
 		#dirname = "/home/sjc/NTE/decision_making/current/models"
 		#dirname = "/home/ben/projects/decision_making/saved/example9"
