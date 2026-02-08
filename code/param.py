@@ -22,7 +22,7 @@ class Param:
 		#dirname = "/home/ben/projects/decision_making/saved/example9"
 		# dirname = "/home/ben/projects/decision_making/saved/example6"
 
-		n = 2 # num robots 
+		n = 4 # num robots 
 		l = 0 # learning iteration 
 		if oracles_on:
 			self.policy_oracle_paths = ["{}/model_policy_l{}_i{}.pt".format(dirname,l,i) for i in range(n)]	
