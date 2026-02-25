@@ -15,7 +15,7 @@ class Example8(Problem):
 		super(Example8,self).__init__()
 
 		self.t0 = 0
-		self.tf = 20
+		self.tf = 40
 		self.dt = 0.5
 		self.gamma = 1.0
 		self.num_robots = 2 
@@ -39,8 +39,8 @@ class Example8(Problem):
 
 		self.state_dim = 5
 		self.action_dim = 4
-		self.times = np.arange(self.t0,self.tf,self.dt)
-		#self.times = np.arange(self.t0,self.tf+self.dt,self.dt)
+		#self.times = np.arange(self.t0,self.tf,self.dt)
+		self.times = np.arange(self.t0,self.tf+self.dt,self.dt)
 		self.policy_encoding_dim = self.state_dim
 		self.value_encoding_dim = self.state_dim
  
@@ -54,10 +54,10 @@ class Example8(Problem):
 		self.approx_dist = (self.state_lims[0,1] - self.state_lims[0,0])/10 
 
 		self.action_lims = np.array((
-			(-0.5,0.5),
-			(-0.5,0.5),
-			#(-0.0,0.0),
-			#(-0.0,0.0),
+			# (-0.5,0.5),
+			# (-0.5,0.5),
+			(-0.0,0.0),
+			(-0.0,0.0),
 			(-0.5,0.5),
 			(-0.5,0.5),
 			))
@@ -67,6 +67,10 @@ class Example8(Problem):
 			(-2,2), 
 			(-2,2), 
 			(-2,2),
+			# (-8,8), 
+			# (-8,8), 
+			# (-8,8), 
+			# (-8,8),
 			(0,0),
 			))
 
@@ -87,34 +91,43 @@ class Example8(Problem):
 		reward = self.normalized_reward(s,a) 
 		return reward
 
+	def normalized_reward(self,s,a):
+		s_next= self.step(s, a, self.dt)
+		r1 = 0.0
+		r2 = 0.0
+		if self.is_captured(s) or s[4,0] >= self.tf:
+			t = min(s_next[4,0], self.tf)
+			r1 = t / self.tf 
+			r2 = 1.0 - r1 
+		elif not contains(s_next[self.state_idxs[0],:],self.state_lims[self.state_idxs[0],:]):
+			r1 = -1.0 
+		elif not contains(s_next[self.state_idxs[1],:],self.state_lims[self.state_idxs[1],:]):
+			r2 = -1.0 
+		else:
+			k = 0.05  
+			d  = np.linalg.norm(s[self.state_idxs[0],:]      - s[self.state_idxs[1],:])
+			dn = np.linalg.norm(s_next[self.state_idxs[0],:] - s_next[self.state_idxs[1],:])
+			shape = k * float(d - dn)   # >0 表示追击者更接近了
+
+			r2 += shape  # pursuer gets positive for progress
+			r1 -= shape  # evader gets negative for pursuer's progress
+		reward = np.array([[r1],[r2]])
+		return reward
+
+	
 	# def normalized_reward(self,s,a):
-	# 	s_next = self.step(s, a, self.dt)
 	# 	r1 = 0.0
 	# 	r2 = 0.0
-	# 	if self.is_captured(s_next) or s_next[4,0] >= self.tf:
-	# 		t = min(s_next[4,0], self.tf)
+	# 	if self.is_captured(s) or s[4,0] >= self.tf:
+	# 		t = min(s[4,0], self.tf)
 	# 		r1 = t / self.tf 
 	# 		r2 = 1.0 - r1 
-	# 	if not contains(s_next[self.state_idxs[0],:],self.state_lims[self.state_idxs[0],:]):
+	# 	if not contains(s[self.state_idxs[0],:],self.state_lims[self.state_idxs[0],:]):
 	# 		r1 = -1.0 
-	# 	if not contains(s_next[self.state_idxs[1],:],self.state_lims[self.state_idxs[1],:]):
+	# 	if not contains(s[self.state_idxs[1],:],self.state_lims[self.state_idxs[1],:]):
 	# 		r2 = -1.0 
 	# 	reward = np.array([[r1],[r2]])
 	# 	return reward
-	
-	def normalized_reward(self,s,a):
-		r1 = 0.0
-		r2 = 0.0
-		if self.is_captured(s) or s[4,0] > self.tf:
-			t = min(s[4,0], self.tf)
-			r1 = t / self.tf 
-			r2 = 1.0 - r1 
-		if not contains(s[self.state_idxs[0],:],self.state_lims[self.state_idxs[0],:]):
-			r1 = -1.0 
-		if not contains(s[self.state_idxs[1],:],self.state_lims[self.state_idxs[1],:]):
-			r2 = -1.0 
-		reward = np.array([[r1],[r2]])
-		return reward
 
 	def is_captured(self,s):
 		return np.linalg.norm(s[self.state_idxs[0],:]-s[self.state_idxs[1],:]) < self.desired_distance

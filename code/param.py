@@ -16,14 +16,14 @@ class Param:
 		self.policy_oracle_name = "gaussian" # ["deterministic","gaussian"]
 
 		# oracles 
-		oracles_on = True
+		oracles_on = False
 		dirname = "../current/models"
 		#dirname = "/home/sjc/NTE/decision_making/current/models"
 		#dirname = "/home/ben/projects/decision_making/saved/example9"
 		# dirname = "/home/ben/projects/decision_making/saved/example6"
 
 		n = 2 # num robots 
-		l = 39 # learning iteration 
+		l = 4 # learning iteration 
 		if oracles_on:
 			self.policy_oracle_paths = ["{}/model_policy_l{}_i{}.pt".format(dirname,l,i) for i in range(n)]	
 			self.value_oracle_path = "{}/model_value_l{}.pt".format(dirname,l)
@@ -36,8 +36,8 @@ class Param:
 		self.pretty_plot_on = True
 
 		# solver settings 
-		self.number_simulations = 500
-		self.search_depth = 20
+		self.number_simulations = 2000
+		self.search_depth = 100
 		self.C_pw = 2.0
 		self.alpha_pw = 0.5
 		self.C_exp = 1.0

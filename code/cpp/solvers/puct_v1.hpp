@@ -2,7 +2,9 @@
 #pragma once 
 #include "solver.hpp"
 // #include "../learning/policy_network_wrapper.hpp"
-
+#include <limits>
+#include <cmath>
+#include <algorithm>
 class PUCT_V1 : public Solver {
 
 	public: 
@@ -68,7 +70,7 @@ class PUCT_V1 : public Solver {
 				solver_result.success = false;
 				return solver_result; 
 			}
-
+//主循环做m_num_simulations次模拟，每次模拟从根节点开始，选择一个节点进行扩展，扩展后进行一次rollout得到奖励，然后将奖励回传更新路径上所有节点的访问次数和总价值。
 			for (int ii = 0; ii < m_num_simulations; ii++){
 
 				Node* curr_node_ptr = root_node_ptr;
@@ -81,6 +83,10 @@ class PUCT_V1 : public Solver {
 					Node* child_node_ptr;
 					if (is_expanded(curr_node_ptr)){
 						child_node_ptr = best_child(curr_node_ptr,robot_turn);
+						if (child_node_ptr == nullptr){
+        					solver_result.success = false;
+        					return solver_result;
+    					}
 					} else {
 						child_node_ptr = expand_node(problem,curr_node_ptr); 
 					}
@@ -133,19 +139,43 @@ class PUCT_V1 : public Solver {
 		}
 
 
+		// Node* best_child(Node* node_ptr,int robot_turn){
+		// 	Node* result = nullptr;
+		// 	float bestValue = -1.0f;
+		// 	for (Node* c : node_ptr->children) {
+		// 		float value = c->total_value(robot_turn) / c->num_visits + m_C_exp*sqrtf(powf(node_ptr->num_visits,m_alpha_exp)/c->num_visits);
+		// 		if (value > bestValue) {
+		// 			bestValue = value;
+		// 			result = c;
+		// 		}
+		// 	}
+		// 	return result;
+		// }
 		Node* best_child(Node* node_ptr,int robot_turn){
 			Node* result = nullptr;
-			float bestValue = -1.0f;
+			float bestValue = -std::numeric_limits<float>::infinity();
+
 			for (Node* c : node_ptr->children) {
-				float value = c->total_value(robot_turn) / c->num_visits + m_C_exp*sqrtf(powf(node_ptr->num_visits,m_alpha_exp)/c->num_visits);
-				if (value > bestValue) {
+				if (c == nullptr || c->num_visits <= 0) continue;
+
+				float q = c->total_value(robot_turn) / c->num_visits;
+				float u = m_C_exp * sqrtf(
+					powf((float)std::max(1, node_ptr->num_visits), m_alpha_exp) / (float)c->num_visits
+				);
+				float value = q + u;
+
+				if (!std::isfinite(value)) continue;
+				if (result == nullptr || value > bestValue) {
 					bestValue = value;
 					result = c;
 				}
 			}
+
+			if (result == nullptr && !node_ptr->children.empty()) {
+				result = node_ptr->children[0];
+			}
 			return result;
 		}
-
 
 		Node* most_visited(Node* node_ptr,int robot_turn){
 			Node* result = nullptr;
