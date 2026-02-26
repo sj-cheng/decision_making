@@ -250,7 +250,7 @@ class PUCT_V1 : public Solver {
 			if (m_value_network_wrapper.valid && problem->dist(g_gen) < m_beta_value) {
 				auto encoding = problem->value_encoding(curr_state);
 				value = m_value_network_wrapper.value_network->eval(problem,encoding,g_gen);
-			} else { 
+			} else {
 				// while ( (!problem->is_terminal(curr_state)) && (depth < m_search_depth)) {
 				// 	auto action = problem->sample_action(g_gen);
 				// 	auto next_state = problem->step(curr_state,action,problem->m_timestep);

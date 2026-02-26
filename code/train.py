@@ -9,6 +9,7 @@ import itertools
 import time 
 import os
 import multiprocessing as mp
+from collections import deque
 from tqdm import tqdm 
 from queue import Queue, Empty 
 from torch.optim.lr_scheduler import ReduceLROnPlateau
@@ -23,8 +24,8 @@ from run import run_instance
 from util import write_dataset, get_dataset_fn, get_oracle_fn, format_dir, get_temp_fn, init_tqdm, update_tqdm
 
 # solver 
-num_simulations = 2000
-search_depth = 100
+num_simulations = 20000
+search_depth = 200
 C_pw = 2.0
 alpha_pw = 0.5
 C_exp = 1.0
@@ -38,24 +39,29 @@ problem_name = "example8"
 policy_oracle_name = "gaussian"
 value_oracle_name = "deterministic"
 
-dirname = "../current/models"
+dirname = "./current/models"
 plot_on= True
 # learning 
 L = 40
 mode = 1 # 0: weighted sum, 1: best child, 2: subsamples 
 #num_D_pi = 10000
-num_D_pi = 2000
+num_D_pi = 62*4
 # num_D_pi = 200
-num_pi_eval = 2000
-num_D_v = 10000
+num_pi_eval = 200
+num_D_v = 124*4
 num_v_eval = 5000
 num_subsamples = 5
 num_self_play_plots = 10 
-learning_rate = 0.001
-num_epochs = 200
+learning_rate = 7e-4
+num_epochs = 5
 # num_epochs = 100
-batch_size = 1028
+batch_size = 1024
 train_test_split = 0.8
+
+# replay buffer
+replay_buffer_multiplier = 20
+policy_replay_buffers = None
+value_replay_buffer = None
 
 
 # MICE-like training
@@ -108,52 +114,59 @@ def worker_edp(rank,queue,seed,fn,problem,robot,num_per_pool,policy_oracle,value
 	count = 0
 	while count < num_per_pool:
 		state = problem.initialize()
-		root_node = solver.search(problem,state,turn=robot)
-		# print('rank: {}, completion: {}, success: {}'.format(rank,len(datapoints)/num_per_pool,root_node.success))
-		if root_node.success:
+
+		# multi-step MCTS rollout: 每一步都搜索并收集经验
+		for _ in problem.times[1:]:
+			root_node = solver.search(problem,state,turn=robot)
+			if not root_node.success:
+				break
+
+			actions,num_visits = solver.get_child_distribution(root_node)
+			if len(actions) == 0:
+				break
+
 			encoding = problem.policy_encoding(state,robot).squeeze()
 
 			if mode == 0:
 				# weighted average of children 
-				actions,num_visits = solver.get_child_distribution(root_node)
 				robot_actions = np.array(actions)[:,robot_action_idx]
 				target = np.average(robot_actions, weights=num_visits, axis=0)
 				datapoint = np.append(encoding,target)
 				datapoints.append(datapoint)
 			elif mode == 1:
-				# best child 
-				# most_visited_child = root_node.children[np.argmax([c.num_visits for c in root_node.children])]
-				# target = root_node.edges[most_visited_child][robot_action_idx,:]
-
-				actions,num_visits = solver.get_child_distribution(root_node)
-
-				# print('actions',actions)
-				# print('num_visits',num_visits)
-				# print('np.argmax(num_visits)',np.argmax(num_visits))
-				# print('actions[np.argmax(num_visits)]',actions[np.argmax(num_visits)])
-				# print('actions[np.argmax(num_visits)][robot_action_idx]',actions[np.argmax(num_visits)][robot_action_idx])
-
+				# best child
 				target = np.array(actions[np.argmax(num_visits)])[robot_action_idx]
-
 				datapoint = np.append(encoding,target)
 				datapoints.append(datapoint)
 			elif mode == 2: 
 				# subsampling of children method
-				actions,num_visits = solver.get_child_distribution(root_node)
 				choice_idxs = np.random.choice(len(actions),num_subsamples,p=num_visits/np.sum(num_visits))
-				
 				for choice_idx in choice_idxs: 
 					target = np.array(actions[choice_idx])[robot_action_idx]
 					datapoint = np.append(encoding,target)
 					datapoints.append(datapoint)
 
-			count += 1
-			update_tqdm(rank,1,queue,pbar)
+			# 用访问次数最多的 joint action 推进环境到下一步
+			env_action = np.array(actions[np.argmax(num_visits)])
+			dt = problem.dt
+			if solver.solver_name in ["PUCT_V2","C_PUCT_V2"]:
+				dt = env_action[-1,0]
+				env_action = env_action[0:-1,:]
+
+			next_state = problem.step(state,env_action,dt)
+			if problem.is_terminal(next_state):
+				break
+			state = next_state
+
+		count += 1
+		update_tqdm(rank,1,queue,pbar)
 	np.save(fn,np.array(datapoints))	
 	return datapoints
 
 
 def make_expert_demonstration_pi(problem,robot,policy_oracle,value_oracle):
+	global policy_replay_buffers
+
 	start_time = time.time()
 	print('making expert demonstration pi...')
 
@@ -187,13 +200,25 @@ def make_expert_demonstration_pi(problem,robot,policy_oracle,value_oracle):
 		seed = np.random.randint(10000)
 		paths.append(path)
 		worker_edp_wrapper((0,Queue(),seed,path,problem,robot,num_D_pi,policy_oracle,value_oracle))
-
-	datapoints = []
+		# rank,queue,seed,fn,problem,robot,num_per_pool,policy_oracle,value_oracle
+	new_datapoints = []
 	for path in paths: 
 	# for fd,path in list(zip(fds,paths)): 
 		# os.close(fd) 
-		datapoints.extend(list(np.load(path)))
+		new_datapoints.extend(list(np.load(path)))
 		os.remove(path)
+
+	if policy_replay_buffers is None:
+		policy_replay_capacity = num_D_pi * replay_buffer_multiplier * (num_subsamples if mode == 2 else 1)
+		policy_replay_buffers = [deque(maxlen=policy_replay_capacity) for _ in range(problem.num_robots)]
+
+	policy_replay_buffers[robot].extend(new_datapoints)
+	if len(policy_replay_buffers[robot]) == 0:
+		raise RuntimeError('policy replay buffer is empty')
+
+	num_policy_samples = num_D_pi * (num_subsamples if mode == 2 else 1)
+	num_policy_samples = min(num_policy_samples, len(policy_replay_buffers[robot]))
+	datapoints = random.sample(list(policy_replay_buffers[robot]), k=num_policy_samples)
 
 	split = int(len(datapoints)*train_test_split)
 	robot_action_dim = len(problem.action_idxs[robot])
@@ -241,7 +266,8 @@ def worker_edv(rank,queue,fn,seed,problem,num_states_per_pool,policy_oracle):
 	while len(datapoints) < num_states_per_pool:	
 		state = problem.initialize()
 		instance["initial_state"] = state
-		sim_result = run_instance(0,Queue(),0,instance,verbose=False,tqdm_on=False)
+  		# 使用和run.py一样的接口
+		sim_result = run_instance(0,Queue(),0,instance,verbose=False,tqdm_on=False)		
 		value = calculate_value(problem,sim_result)
 		encoding = problem.value_encoding(state).squeeze()
 		datapoint = np.append(encoding,value)
@@ -252,6 +278,8 @@ def worker_edv(rank,queue,fn,seed,problem,num_states_per_pool,policy_oracle):
 
 
 def make_expert_demonstration_v(problem, l): 
+	global value_replay_buffer
+
 	start_time = time.time()
 	print('making value dataset...')
 
@@ -287,12 +315,23 @@ def make_expert_demonstration_v(problem, l):
 		seed = np.random.randint(10000)
 		worker_edv_wrapper((0,Queue(),paths[0],seed,problem,num_D_v,policy_oracle))
 
-	datapoints = []
+	new_datapoints = []
 	plot_count = 0 
 	for path in paths:
 		datapoints_i = np.load(path,allow_pickle=True)
-		datapoints.extend(datapoints_i)
+		new_datapoints.extend(datapoints_i)
 		os.remove(path)
+
+	if value_replay_buffer is None:
+		value_replay_capacity = num_D_v * replay_buffer_multiplier
+		value_replay_buffer = deque(maxlen=value_replay_capacity)
+
+	value_replay_buffer.extend(new_datapoints)
+	if len(value_replay_buffer) == 0:
+		raise RuntimeError('value replay buffer is empty')
+
+	num_value_samples = min(num_D_v, len(value_replay_buffer))
+	datapoints = random.sample(list(value_replay_buffer), k=num_value_samples)
 
 	split = int(len(datapoints)*train_test_split)
 	train_dataset = datapoints_to_dataset(datapoints[0:split],"train_value",\
@@ -344,7 +383,7 @@ def train_model(problem,train_dataset,test_dataset,l,oracle_name,robot=0):
 
 	optimizer = torch.optim.Adam(model.parameters(),lr=learning_rate)
 	scheduler = ReduceLROnPlateau(optimizer, 'min', \
-		factor=0.5, patience=50, min_lr=1e-4, verbose=True)
+		factor=0.5, patience=50, min_lr=1e-4)
 
 	train_dataset.to(device)
 	test_dataset.to(device)
@@ -352,7 +391,7 @@ def train_model(problem,train_dataset,test_dataset,l,oracle_name,robot=0):
 	test_loader = torch.utils.data.DataLoader(test_dataset,batch_size=batch_size)	
 
 	losses = []
-	best_test_loss = np.Inf
+	best_test_loss = np.inf
 	for epoch in tqdm(range(num_epochs)): 
 		train_epoch_loss = train(model,optimizer,train_loader)
 		test_epoch_loss = test(model,test_loader)
@@ -531,6 +570,7 @@ if __name__ == '__main__':
 				policy_oracle_paths = policy_oracle_paths
 				)
 			
+			# 跑一次自对弈，生成example
 			print('\t self play l/L: {}/{}...'.format(l,L))
 			sim_results = self_play(problem,policy_oracle,value_oracle,l-1)
 

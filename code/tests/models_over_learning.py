@@ -59,8 +59,8 @@ def eval_models(problem,policy_model_fns,policy_oracle_name,value_model_fns,valu
 	# todo 
 
 
-	plotter.save_figs("../current/plots/model_over_learning_iterations.pdf")
-	plotter.open_figs("../current/plots/model_over_learning_iterations.pdf")
+	plotter.save_figs("./current/plots/model_over_learning_iterations.pdf")
+	plotter.open_figs("./current/plots/model_over_learning_iterations.pdf")
 
 if __name__ == '__main__':
 	

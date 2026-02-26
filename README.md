@@ -59,4 +59,4 @@ it means that the solver tried to query a neural network oracle that does not ex
 
 To disable the neural network search, change `oracles_on` in `param.py` to `oracles_on = False`
 
-To create a model, run `python train.py`. After training, you can query the newly created model (in `../current/models/`) by changing the `dirname` parameter in `param.py` to the corresponding location. 
+To create a model, run `python train.py`. After training, you can query the newly created model (in `./current/models/`) by changing the `dirname` parameter in `param.py` to the corresponding location. 

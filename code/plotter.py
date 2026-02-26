@@ -390,4 +390,4 @@ def make_movie(sim_result,instance,filename):
 
 	ln = ax.plot([],[],[])
 	anim = animation.FuncAnimation(fig, animate, frames=len(times)+1, interval=1)
-	anim.save(filename, fps=10, extra_args=['-vcodec', 'libx264'], dpi=1000)
+	anim.save(filename, fps=10, dpi=1000)

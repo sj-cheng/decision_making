@@ -54,10 +54,10 @@ class Example8(Problem):
 		self.approx_dist = (self.state_lims[0,1] - self.state_lims[0,0])/10 
 
 		self.action_lims = np.array((
-			# (-0.5,0.5),
-			# (-0.5,0.5),
-			(-0.0,0.0),
-			(-0.0,0.0),
+			(-0.5,0.5),
+			(-0.5,0.5),
+			# (-0.0,0.0),
+			# (-0.0,0.0),
 			(-0.5,0.5),
 			(-0.5,0.5),
 			))

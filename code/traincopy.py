@@ -38,7 +38,7 @@ problem_name = "example6"
 policy_oracle_name = "gaussian"
 value_oracle_name = "deterministic"
 
-dirname = "../current/models"
+dirname = "./current/models"
 
 # learning 
 L = 40
@@ -52,7 +52,7 @@ num_v_eval = 5000
 num_subsamples = 5
 num_self_play_plots = 10 
 learning_rate = 0.001
-num_epochs = 200
+num_epochs = 500
 # num_epochs = 100
 batch_size = 1028
 train_test_split = 0.8
@@ -350,7 +350,7 @@ def train_model(problem,train_dataset,test_dataset,l,oracle_name,robot=0):
 	test_loader = torch.utils.data.DataLoader(test_dataset,batch_size=batch_size)	
 
 	losses = []
-	best_test_loss = np.Inf
+	best_test_loss = np.inf
 	for epoch in tqdm(range(num_epochs)): 
 		train_epoch_loss = train(model,optimizer,train_loader)
 		test_epoch_loss = test(model,test_loader)

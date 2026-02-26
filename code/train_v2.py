@@ -170,7 +170,7 @@ def make_expert_demonstration_v(problem, num_states, value_oracle, policy_oracle
 	plotter.plot_value_dataset(problem,
 		[[train_dataset.X_np,train_dataset.target_np],[test_dataset.X_np,test_dataset.target_np]],
 		["Train","Test"])
-	plotter.save_figs("../current/models/dataset_value_l{}.pdf".format(l))
+	plotter.save_figs("./current/models/dataset_value_l{}.pdf".format(l))
 	print('expert demonstration v completed in {}s.'.format(time.time()-start_time))	
 	return train_dataset, test_dataset
 
@@ -196,7 +196,7 @@ def train_model(problem,train_dataset,test_dataset,l,oracle_name,robot=0):
 
 	optimizer = torch.optim.Adam(model.parameters(),lr=learning_rate)
 	scheduler = ReduceLROnPlateau(optimizer, 'min', \
-		factor=0.5, patience=50, min_lr=1e-4, verbose=True)
+		factor=0.5, patience=50, min_lr=1e-4)
 
 	train_dataset.to(device)
 	test_dataset.to(device)
@@ -215,7 +215,7 @@ def train_model(problem,train_dataset,test_dataset,l,oracle_name,robot=0):
 			torch.save(model.to('cpu').state_dict(),model_fn)
 			model.to(device)
 	plotter.plot_loss(losses)
-	plotter.save_figs("../current/models/losses_{}_l{}_i{}.pdf".format(oracle_name,l,robot))
+	plotter.save_figs("./current/models/losses_{}_l{}_i{}.pdf".format(oracle_name,l,robot))
 	print('training model completed in {}s.'.format(time.time()-start_time))
 	return 
 
@@ -259,7 +259,7 @@ def test(model,loader):
 # 	states = np.array(states).squeeze(axis=2)
 # 	values = np.array(values).squeeze(axis=2)
 # 	plotter.plot_value_dataset(problem,[[states,values]],["Eval"])
-# 	plotter.save_figs("../current/models/model_eval_l{}.pdf".format(l))
+# 	plotter.save_figs("./current/models/model_eval_l{}.pdf".format(l))
 
 def eval_value(problem,l):
 	
@@ -281,7 +281,7 @@ def eval_value(problem,l):
 	states = np.array(states).squeeze(axis=2)
 	values = np.array(values).squeeze(axis=2)
 	plotter.plot_value_dataset(problem,[[states,values]],["Eval"])
-	plotter.save_figs("../current/models/value_eval_l{}.pdf".format(l))
+	plotter.save_figs("./current/models/value_eval_l{}.pdf".format(l))
 
 
 if __name__ == '__main__':

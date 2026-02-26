@@ -115,5 +115,5 @@ if __name__ == '__main__':
             sim_results.append(worker(param)) 
 
     plotter.plot_regression_test(sim_results,render_on=True)
-    plotter.save_figs("../../current/plots/regression.pdf")
-    plotter.open_figs("../../current/plots/regression.pdf")
+    plotter.save_figs(".././current/plots/regression.pdf")
+    plotter.open_figs(".././current/plots/regression.pdf")
