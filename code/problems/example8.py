@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
 
+from typing_extensions import override
 # custom 
 from problems.problem import Problem
 from util import sample_vector, contains
@@ -19,14 +20,14 @@ class Example8(Problem):
 		self.dt = 0.5
 		self.gamma = 1.0
 		self.num_robots = 2 
-		self.state_dim = 4
-		self.action_dim = 4
+
 		self.r_max = 1
 		self.r_min = 0
 		self.name = "example8"
 		self.position_idx = np.arange(2) 
 		self.state_control_weight = 1e-5 
 		self.desired_distance = 1.0
+		self.init_min_dist = 2.0
 
 		self.state_idxs = [
 			np.arange(2),
@@ -56,8 +57,6 @@ class Example8(Problem):
 		self.action_lims = np.array((
 			(-0.5,0.5),
 			(-0.5,0.5),
-			# (-0.0,0.0),
-			# (-0.0,0.0),
 			(-0.5,0.5),
 			(-0.5,0.5),
 			))
@@ -67,10 +66,6 @@ class Example8(Problem):
 			(-2,2), 
 			(-2,2), 
 			(-2,2),
-			# (-8,8), 
-			# (-8,8), 
-			# (-8,8), 
-			# (-8,8),
 			(0,0),
 			))
 
@@ -91,17 +86,27 @@ class Example8(Problem):
 		reward = self.normalized_reward(s,a) 
 		return reward
 
+	@override
+	def initialize(self):
+		valid = False
+		while not valid:
+			state = sample_vector(self.init_lims)
+			r1_pos = state[self.state_idxs[0],:]
+			r2_pos = state[self.state_idxs[1],:]
+			valid = not self.is_terminal(state) and np.linalg.norm(r1_pos - r2_pos) > self.init_min_dist
+		return state
+
 	def normalized_reward(self,s,a):
 		s_next= self.step(s, a, self.dt)
 		r1 = 0.0
 		r2 = 0.0
 		if self.is_captured(s) or s[4,0] >= self.tf:
 			t = min(s_next[4,0], self.tf)
-			r1 = t / self.tf 
-			r2 = 1.0 - r1 
-		elif not contains(s_next[self.state_idxs[0],:],self.state_lims[self.state_idxs[0],:]):
-			r1 = -1.0 
-		elif not contains(s_next[self.state_idxs[1],:],self.state_lims[self.state_idxs[1],:]):
+			r1 = t / self.tf		# 逃跑者，被抓住越晚越好
+			r2 = 1.0 - r1 			# 追捕者，抓住越快越好
+		elif not contains(s_next[self.state_idxs[0],:],self.state_lims[self.state_idxs[0],:]):	# 超出范围
+			r1 = -1.0
+		elif not contains(s_next[self.state_idxs[1],:],self.state_lims[self.state_idxs[1],:]):  # 超出范围
 			r2 = -1.0 
 		else:
 			k = 0.05  
@@ -114,6 +119,67 @@ class Example8(Problem):
 		reward = np.array([[r1],[r2]])
 		return reward
 
+	def gt_action(self, state, robot):
+		e_pos = state[self.state_idxs[0], :]
+		p_pos = state[self.state_idxs[1], :]
+
+		if robot == 0:
+			direction = e_pos - p_pos
+		else:
+			direction = e_pos - p_pos
+
+		norm = np.linalg.norm(direction)
+		if norm < 1e-8:
+			unit = np.zeros((2, 1))
+		else:
+			unit = direction / norm
+
+		robot_action_idxs = self.action_idxs[robot]
+		u_max = np.abs(self.action_lims[robot_action_idxs, 1]).reshape((-1, 1))
+
+		if robot == 0:
+			action = unit * u_max
+		else:
+			action = unit * u_max
+
+		action = np.clip(
+			action,
+			self.action_lims[robot_action_idxs, 0].reshape((-1, 1)),
+			self.action_lims[robot_action_idxs, 1].reshape((-1, 1)),
+		)
+		return action
+
+	def gt_actions(self, state):
+		actions = []
+		for robot in range(self.num_robots):
+			action = self.gt_action(state, robot)
+			actions.append(action)
+		return np.array(actions).reshape(-1, 1)
+
+	def gt_value(self, state, robot):
+		t = float(state[4, 0])
+
+		if self.is_captured(state) or t >= self.tf:
+			evader_value = min(t, self.tf) / self.tf
+			pursuer_value = 1.0 - evader_value
+			values = np.array([[evader_value], [pursuer_value]])
+			return values[robot:robot+1, :]
+
+		e_pos = state[self.state_idxs[0], :]
+		p_pos = state[self.state_idxs[1], :]
+		d = np.linalg.norm(e_pos - p_pos)
+
+		evader_action_max = np.linalg.norm(self.action_lims[self.action_idxs[0], 1])
+		pursuer_action_max = np.linalg.norm(self.action_lims[self.action_idxs[1], 1])
+		closing_speed = max(evader_action_max + pursuer_action_max, 1e-8)
+
+		t_to_capture = max((d - self.desired_distance) / closing_speed, 0.0)
+		terminal_t = min(t + t_to_capture, self.tf)
+
+		evader_value = terminal_t / self.tf
+		pursuer_value = 1.0 - evader_value
+		values = np.array([[evader_value], [pursuer_value]])
+		return values[robot:robot+1, :]
 	
 	# def normalized_reward(self,s,a):
 	# 	r1 = 0.0
@@ -144,6 +210,8 @@ class Example8(Problem):
 
 	def render(self,states=None,fig=None,ax=None):
 		# states, np array in [nt x state_dim]
+  
+		states = states.squeeze() if states is not None else None
 		
 		if fig == None or ax == None:
 			fig,ax = plotter.make_fig()
@@ -188,7 +256,7 @@ class Example8(Problem):
 		return contains(state,self.state_lims)
 
 	def policy_encoding(self,state,robot):
-		return state 
+		return state
 
 	def value_encoding(self,state):
 		return state 
@@ -375,7 +443,7 @@ class Example8(Problem):
 					state = self.initialize()
 					state[not_robot_idxs,:] = inital_state[not_robot_idxs,:]
 					states.append(state)
-				states = np.array(states).squeeze(axis=2)
+				states = np.array(states).squeeze()#(axis=2)
 
 				# plot value func contours
 				if sim_result["instance"]["value_oracle"] is not None:

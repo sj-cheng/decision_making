@@ -24,8 +24,8 @@ from run import run_instance
 from util import write_dataset, get_dataset_fn, get_oracle_fn, format_dir, get_temp_fn, init_tqdm, update_tqdm
 
 # solver 
-num_simulations = 20000
-search_depth = 200
+num_simulations = 2000
+search_depth = 100
 C_pw = 2.0
 alpha_pw = 0.5
 C_exp = 1.0
@@ -44,18 +44,18 @@ plot_on= True
 # learning 
 L = 40
 mode = 1 # 0: weighted sum, 1: best child, 2: subsamples 
-#num_D_pi = 10000
-num_D_pi = 62*4
+num_D_pi = 2000
+# num_D_pi = 500
 # num_D_pi = 200
-num_pi_eval = 200
-num_D_v = 124*4
-num_v_eval = 5000
+num_pi_eval = 500
+num_D_v = 5000
+num_v_eval = 1000
 num_subsamples = 5
-num_self_play_plots = 10 
+num_self_play_plots = 10
 learning_rate = 7e-4
-num_epochs = 5
+num_epochs = 200
 # num_epochs = 100
-batch_size = 1024
+batch_size = 4096
 train_test_split = 0.8
 
 # replay buffer
@@ -71,20 +71,48 @@ class Dataset(torch.utils.data.Dataset):
 		with open(src_file, 'rb') as h:
 			datapoints = np.load(h)
 		self.X_np, self.target_np = datapoints[:,0:encoding_dim], datapoints[:,encoding_dim:]
-		self.X_torch = torch.tensor(self.X_np,dtype=torch.float32,device=device)
-		self.target_torch = torch.tensor(self.target_np,dtype=torch.float32,device=device)
+		self.X_torch = torch.from_numpy(np.ascontiguousarray(self.X_np)).float()
+		self.target_torch = torch.from_numpy(np.ascontiguousarray(self.target_np)).float()
 
 	def __len__(self):
 		return self.X_torch.shape[0]
 
 	def __getitem__(self, idx):
-		if torch.is_tensor(idx):
-			idx = idx.tolist()
-		return self.X_torch[idx,:], self.target_torch[idx,:]
+		return int(idx)
+
+	def get_batch(self, idx):
+		if not torch.is_tensor(idx):
+			idx = torch.as_tensor(idx, dtype=torch.long)
+		return self.X_torch[idx, :], self.target_torch[idx, :]
 
 	def to(self,device):
 		self.X_torch = self.X_torch.to(device)
 		self.target_torch = self.target_torch.to(device)
+		return self
+
+
+class TensorBatchLoader:
+	def __init__(self, dataset, batch_size, shuffle, device='cpu'):
+		self.dataset = dataset
+		self.batch_size = max(1, int(batch_size))
+		self.shuffle = bool(shuffle)
+		self.size = len(dataset)
+
+	def __iter__(self):
+		if self.size == 0:
+			return
+		if self.shuffle:
+			indices = torch.randperm(self.size, dtype=torch.long)
+		else:
+			indices = torch.arange(self.size, dtype=torch.long)
+		for start in range(0, self.size, self.batch_size):
+			batch_idx = indices[start:start+self.batch_size]
+			yield self.dataset.get_batch(batch_idx)
+
+	def __len__(self):
+		if self.size == 0:
+			return 0
+		return (self.size + self.batch_size - 1) // self.batch_size
 
 # policy demonstration functions 
 def worker_edp_wrapper(arg):
@@ -112,54 +140,64 @@ def worker_edp(rank,queue,seed,fn,problem,robot,num_per_pool,policy_oracle,value
 	
 	robot_action_idx = problem.action_idxs[robot]
 	count = 0
+	failure_count = 0
+ 
 	while count < num_per_pool:
 		state = problem.initialize()
+		root_node = solver.search(problem,state,turn=robot)
 
-		# multi-step MCTS rollout: 每一步都搜索并收集经验
-		for _ in problem.times[1:]:
-			root_node = solver.search(problem,state,turn=robot)
-			if not root_node.success:
-				break
-
-			actions,num_visits = solver.get_child_distribution(root_node)
-			if len(actions) == 0:
-				break
-
+		if False:
+			encoding = problem.policy_encoding(state,robot).squeeze()
+			datapoint = np.append(encoding, problem.gt_actions(state)[robot_action_idx].flatten())
+			datapoints.append(datapoint)
+			count += 1
+			update_tqdm(rank,1,queue,pbar)
+			continue
+		
+  		# print('rank: {}, completion: {}, success: {}'.format(rank,len(datapoints)/num_per_pool,root_node.success))
+		if root_node.success:
 			encoding = problem.policy_encoding(state,robot).squeeze()
 
 			if mode == 0:
 				# weighted average of children 
+				actions,num_visits = solver.get_child_distribution(root_node)
 				robot_actions = np.array(actions)[:,robot_action_idx]
 				target = np.average(robot_actions, weights=num_visits, axis=0)
 				datapoint = np.append(encoding,target)
 				datapoints.append(datapoint)
 			elif mode == 1:
-				# best child
+				# best child 
+				# most_visited_child = root_node.children[np.argmax([c.num_visits for c in root_node.children])]
+				# target = root_node.edges[most_visited_child][robot_action_idx,:]
+
+				actions,num_visits = solver.get_child_distribution(root_node)
+				
+
+				# print('actions',actions)
+				# print('num_visits',num_visits)
+				# print('np.argmax(num_visits)',np.argmax(num_visits))
+				# print('actions[np.argmax(num_visits)]',actions[np.argmax(num_visits)])
+				# print('actions[np.argmax(num_visits)][robot_action_idx]',actions[np.argmax(num_visits)][robot_action_idx])
+
 				target = np.array(actions[np.argmax(num_visits)])[robot_action_idx]
 				datapoint = np.append(encoding,target)
 				datapoints.append(datapoint)
 			elif mode == 2: 
 				# subsampling of children method
+				actions,num_visits = solver.get_child_distribution(root_node)
 				choice_idxs = np.random.choice(len(actions),num_subsamples,p=num_visits/np.sum(num_visits))
+				
 				for choice_idx in choice_idxs: 
 					target = np.array(actions[choice_idx])[robot_action_idx]
 					datapoint = np.append(encoding,target)
 					datapoints.append(datapoint)
 
-			# 用访问次数最多的 joint action 推进环境到下一步
-			env_action = np.array(actions[np.argmax(num_visits)])
-			dt = problem.dt
-			if solver.solver_name in ["PUCT_V2","C_PUCT_V2"]:
-				dt = env_action[-1,0]
-				env_action = env_action[0:-1,:]
-
-			next_state = problem.step(state,env_action,dt)
-			if problem.is_terminal(next_state):
-				break
-			state = next_state
-
-		count += 1
-		update_tqdm(rank,1,queue,pbar)
+			count += 1
+			update_tqdm(rank,1,queue,pbar)
+		else:
+			failure_count += 1
+	
+	print('rank {} completed with {} datapoints and {} failures.'.format(rank,len(datapoints),failure_count))
 	np.save(fn,np.array(datapoints))	
 	return datapoints
 
@@ -171,7 +209,6 @@ def make_expert_demonstration_pi(problem,robot,policy_oracle,value_oracle):
 	print('making expert demonstration pi...')
 
 	paths = []
-	# fds = []
 	if parallel_on: 
 		ncpu = mp.cpu_count() - 1
 		num_per_pool = int(num_D_pi / ncpu)
@@ -216,9 +253,14 @@ def make_expert_demonstration_pi(problem,robot,policy_oracle,value_oracle):
 	if len(policy_replay_buffers[robot]) == 0:
 		raise RuntimeError('policy replay buffer is empty')
 
-	num_policy_samples = num_D_pi * (num_subsamples if mode == 2 else 1)
-	num_policy_samples = min(num_policy_samples, len(policy_replay_buffers[robot]))
-	datapoints = random.sample(list(policy_replay_buffers[robot]), k=num_policy_samples)
+	base_samples = num_D_pi * (num_subsamples if mode == 2 else 1)
+	num_policy_samples = min(5 * base_samples, len(policy_replay_buffers[robot]))
+	
+	buffer_list = list(policy_replay_buffers[robot])
+	weights = np.arange(1, len(buffer_list) + 1)			# 按时间线性增长的权重，越新的数据权重越大
+	weights = weights / np.sum(weights)
+	indices = np.random.choice(len(buffer_list), size=num_policy_samples, replace=False, p=weights)
+	datapoints = [buffer_list[i] for i in indices]
 
 	split = int(len(datapoints)*train_test_split)
 	robot_action_dim = len(problem.action_idxs[robot])
@@ -330,8 +372,13 @@ def make_expert_demonstration_v(problem, l):
 	if len(value_replay_buffer) == 0:
 		raise RuntimeError('value replay buffer is empty')
 
-	num_value_samples = min(num_D_v, len(value_replay_buffer))
-	datapoints = random.sample(list(value_replay_buffer), k=num_value_samples)
+	num_value_samples = min(5 * num_D_v, len(value_replay_buffer))
+	
+	buffer_list = list(value_replay_buffer)
+	weights = np.arange(1, len(buffer_list) + 1)
+	weights = weights / np.sum(weights)
+	indices = np.random.choice(len(buffer_list), size=num_value_samples, replace=False, p=weights)
+	datapoints = [buffer_list[i] for i in indices]
 
 	split = int(len(datapoints)*train_test_split)
 	train_dataset = datapoints_to_dataset(datapoints[0:split],"train_value",\
@@ -361,8 +408,7 @@ def train_model(problem,train_dataset,test_dataset,l,oracle_name,robot=0):
 	start_time = time.time()
 	print('training model...')
 
-	device = "cpu"
-	#device = "cuda"
+	device = "cuda" if torch.cuda.is_available() else "cpu"
 	value_oracle_path, policy_oracle_paths = get_oracle_fn(l,problem.num_robots)
 
 	if oracle_name == "policy":
@@ -380,27 +426,41 @@ def train_model(problem,train_dataset,test_dataset,l,oracle_name,robot=0):
 			force = True
 			)
 	model.to(device)
+	if device == "cuda":
+		torch.backends.cudnn.benchmark = True
+		torch.backends.cuda.matmul.allow_tf32 = True
+		torch.backends.cudnn.allow_tf32 = True
 
-	optimizer = torch.optim.Adam(model.parameters(),lr=learning_rate)
-	scheduler = ReduceLROnPlateau(optimizer, 'min', \
-		factor=0.5, patience=50, min_lr=1e-4)
+	optimizer = torch.optim.AdamW(model.parameters(),lr=learning_rate)
+	# scheduler = ReduceLROnPlateau(optimizer, 'min', \
+	# 	factor=0.5, patience=50, min_lr=1e-4)
 
+	train_size = len(train_dataset)
+	test_size = len(test_dataset)
+	if train_size == 0 or test_size == 0:
+		raise RuntimeError("empty dataset: train_size={}, test_size={}".format(train_size, test_size))
+
+	train_batch_size = min(batch_size, train_size)
+	test_batch_size = min(256, test_size)
+
+	train_loader = TensorBatchLoader(train_dataset,batch_size=train_batch_size,shuffle=True)
+	test_loader = TensorBatchLoader(test_dataset,batch_size=test_batch_size,shuffle=False)
+ 
 	train_dataset.to(device)
 	test_dataset.to(device)
-	train_loader = torch.utils.data.DataLoader(train_dataset,batch_size=batch_size)
-	test_loader = torch.utils.data.DataLoader(test_dataset,batch_size=batch_size)	
 
 	losses = []
 	best_test_loss = np.inf
 	for epoch in tqdm(range(num_epochs)): 
-		train_epoch_loss = train(model,optimizer,train_loader)
-		test_epoch_loss = test(model,test_loader)
-		scheduler.step(test_epoch_loss)
+		train_epoch_loss = train(model,optimizer,train_loader,device)
+		test_epoch_loss = test(model,test_loader,device)
+		# if scheduler is enabled, step it here
+		# scheduler.step(test_epoch_loss)
 		losses.append((train_epoch_loss,test_epoch_loss))
 		if test_epoch_loss < best_test_loss:
 			best_test_loss = test_epoch_loss
-			torch.save(model.to('cpu').state_dict(),model_fn)
-			model.to(device)
+			state_dict_cpu = {k: v.detach().cpu() for k, v in model.state_dict().items()}
+			torch.save(state_dict_cpu,model_fn)
 	if plot_on:
 		plotter.plot_loss(losses)
 		plotter.save_figs("{}/losses_{}_l{}_i{}.pdf".format(dirname,oracle_name,l,robot))
@@ -408,25 +468,36 @@ def train_model(problem,train_dataset,test_dataset,l,oracle_name,robot=0):
 	return 
 
 
-def train(model,optimizer,loader):
+def train(model,optimizer,loader,device):
 	epoch_loss = 0
 	loss_by_components = []
+	num_batches = 0
+	non_blocking = (device == "cuda")
 	for step, (x,target) in enumerate(loader):
-		loss = model.loss_fnc(x,target) 
-		optimizer.zero_grad()
+		# x = x.to(device, non_blocking=non_blocking)
+		# target = target.to(device, non_blocking=non_blocking)
+		optimizer.zero_grad(set_to_none=True)
+		loss = model.loss_fnc(x,target)
 		loss.backward()
 		optimizer.step()
 		epoch_loss += float(loss)
-	return epoch_loss/step
+		num_batches += 1
+	return epoch_loss/max(1,num_batches)
 
 
-def test(model,loader):
+def test(model,loader,device):
 	epoch_loss = 0
 	loss_by_components = []
-	for step, (x,target) in enumerate(loader):
-		loss = model.loss_fnc(x,target) 
-		epoch_loss += float(loss)
-	return epoch_loss/step
+	num_batches = 0
+	non_blocking = (device == "cuda")
+	with torch.no_grad():
+		for step, (x,target) in enumerate(loader):
+			x = x.to(device, non_blocking=non_blocking)
+			target = target.to(device, non_blocking=non_blocking)
+			loss = model.loss_fnc(x,target)
+			epoch_loss += float(loss)
+			num_batches += 1
+	return epoch_loss/max(1,num_batches)
 
 
 def eval_value(problem,l):
@@ -549,9 +620,9 @@ if __name__ == '__main__':
 	num_D_pi_samples = num_D_pi
 	if mode == 2:
 		num_D_pi_samples = num_D_pi*num_subsamples
-	if batch_size > np.min((num_D_pi_samples,num_D_v)) * (1-train_test_split):
-		batch_size = int(np.floor((np.min((num_D_pi_samples,num_D_v)) * train_test_split / 10)))
-		print('changing batch size to {}'.format(batch_size))
+	# if batch_size > np.min((num_D_pi_samples,num_D_v)) * (1-train_test_split):
+	# 	batch_size = int(np.floor((np.min((num_D_pi_samples,num_D_v)) * train_test_split / 10)))
+	# 	print('changing batch size to {}'.format(batch_size))
 
 	# training 
 	for l in range(L):
