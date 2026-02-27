@@ -38,7 +38,7 @@ problem_name = "example6"
 policy_oracle_name = "gaussian"
 value_oracle_name = "deterministic"
 
-dirname = "./current/models"
+dirname = "../current/models"
 
 # learning 
 L = 40

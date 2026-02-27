@@ -17,7 +17,7 @@ class Param:
 
 		# oracles 
 		oracles_on = False
-		dirname = "./current/models"
+		dirname = "../current/models"
 		#dirname = "/home/sjc/NTE/decision_making/current/models"
 		#dirname = "/home/ben/projects/decision_making/saved/example9"
 		# dirname = "/home/ben/projects/decision_making/saved/example6"
@@ -36,7 +36,7 @@ class Param:
 		self.pretty_plot_on = True
 
 		# solver settings 
-		self.number_simulations = 200
+		self.number_simulations = 2000
 		self.search_depth = 100
 		self.C_pw = 2.0							# 每个节点最多能扩展多少个子节点
 		self.alpha_pw = 0.5						# 访问次数增加时，子节点上限增长有多块 
