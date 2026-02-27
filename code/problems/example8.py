@@ -63,14 +63,14 @@ class Example8(Problem):
 			))
 
 		self.init_lims = np.array((
-			(-2,2), 
-			(-2,2), 
-			(-2,2), 
-			(-2,2),
-			# (-8,8), 
-			# (-8,8), 
-			# (-8,8), 
-			# (-8,8),
+			# (-2,2), 
+			# (-2,2), 
+			# (-2,2), 
+			# (-2,2),
+			(-8,8), 
+			(-8,8), 
+			(-8,8), 
+			(-8,8),
 			(0,0),
 			))
 
@@ -95,7 +95,7 @@ class Example8(Problem):
 		s_next= self.step(s, a, self.dt)
 		r1 = 0.0
 		r2 = 0.0
-		if self.is_captured(s) or s[4,0] >= self.tf:
+		if self.is_captured(s_next) or s_next[4,0] >= self.tf:
 			t = min(s_next[4,0], self.tf)
 			r1 = t / self.tf 
 			r2 = 1.0 - r1 

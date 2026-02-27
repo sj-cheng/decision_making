@@ -95,7 +95,7 @@ class Example8 : public Problem {
 			auto next_statee = step(state, action, m_timestep);
 			Eigen::Matrix<float,-1,1> r(m_num_robots,1);
 			r.setZero();
-			if (is_captured(state) || state(4,0) >= m_tf){
+			if (is_captured(next_statee) || next_statee(4,0) >= m_tf){
 				float t = std::min(next_statee(4,0), m_tf);
 				r(0,0) = t / m_tf;
 				r(1,0) = 1.0 - r(0,0);
