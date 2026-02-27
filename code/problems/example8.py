@@ -19,7 +19,7 @@ class Example8(Problem):
 		self.tf = 40
 		self.dt = 0.5
 		self.gamma = 1.0
-		self.num_robots = 2 
+		self.num_robots = 4 
 
 		self.r_max = 1
 		self.r_min = 0
@@ -30,16 +30,20 @@ class Example8(Problem):
 		self.init_min_dist = 2.0
 
 		self.state_idxs = [
-			np.arange(2),
-			2+np.arange(2)
+			np.array([0,1]),  # E1
+			np.array([2,3]),  # E2
+			np.array([4,5]),  # P1
+			np.array([6,7]),  # P2
 		]
 		self.action_idxs = [
-			np.arange(2),
-			2+np.arange(2)
+			np.array([0,1]),  # E1 action
+			np.array([2,3]),  # E2 action
+			np.array([4,5]),  # P1 action
+			np.array([6,7]),  # P2 action
 		]
 
-		self.state_dim = 5
-		self.action_dim = 4
+		self.state_dim = 9
+		self.action_dim = 8
 		#self.times = np.arange(self.t0,self.tf,self.dt)
 		self.times = np.arange(self.t0,self.tf+self.dt,self.dt)
 		self.policy_encoding_dim = self.state_dim
@@ -50,22 +54,40 @@ class Example8(Problem):
 			(-10,10), 
 			(-10,10), 
 			(-10,10),
+			(-10,10), 
+			(-10,10), 
+			(-10,10), 
+			(-10,10),
 			(0,self.tf),
 			))
 		self.approx_dist = (self.state_lims[0,1] - self.state_lims[0,0])/10 
 
 		self.action_lims = np.array((
+			(-0.0,0.0),
+			(-0.0,0.0),
+			(-0.0,0.0),
+			(-0.0,0.0),
+			# (-0.0,0.0),
+			# (-0.0,0.0),
+
+			# (-0.5,0.5),
+			# (-0.5,0.5),
+
+			# (-0.5,0.5),
+			# (-0.5,0.5),
+
 			(-0.5,0.5),
 			(-0.5,0.5),
+
 			(-0.5,0.5),
 			(-0.5,0.5),
 			))
 
 		self.init_lims = np.array((
-			(-2,2), 
-			(-2,2), 
-			(-2,2), 
-			(-2,2),
+			(-8,8), (-8,8),
+			(-8,8), (-8,8),
+			(-8,8), (-8,8),
+			(-8,8), (-8,8),
 			(0,0),
 			))
 
@@ -100,23 +122,25 @@ class Example8(Problem):
 		s_next= self.step(s, a, self.dt)
 		r1 = 0.0
 		r2 = 0.0
-		if self.is_captured(s) or s[4,0] >= self.tf:
-			t = min(s_next[4,0], self.tf)
+		reward = np.array([[r1], [r1], [r2], [r2]], dtype=float)
+		if self.is_captured(s_next) or s_next[8,0] >= self.tf:
+			t = min(s_next[8,0], self.tf)
 			r1 = t / self.tf		# 逃跑者，被抓住越晚越好
 			r2 = 1.0 - r1 			# 追捕者，抓住越快越好
-		elif not contains(s_next[self.state_idxs[0],:],self.state_lims[self.state_idxs[0],:]):	# 超出范围
-			r1 = -1.0
-		elif not contains(s_next[self.state_idxs[1],:],self.state_lims[self.state_idxs[1],:]):  # 超出范围
-			r2 = -1.0 
-		else:
-			k = 0.05  
-			d  = np.linalg.norm(s[self.state_idxs[0],:]      - s[self.state_idxs[1],:])
-			dn = np.linalg.norm(s_next[self.state_idxs[0],:] - s_next[self.state_idxs[1],:])
-			shape = k * float(d - dn)   # >0 表示追击者更接近了
+			reward = np.array([[r1],[r1],[r2],[r2]],dtype=float)
+		
+		for robot in range (self.num_robots):
+			if not contains(s_next[self.state_idxs[robot],:],self.state_lims[self.state_idxs[robot],:]):
+				reward[robot,0]= -1.0
+		# else:
+		# 	k = 0.05  
+		# 	d  = np.linalg.norm(s[self.state_idxs[0],:]      - s[self.state_idxs[1],:])
+		# 	dn = np.linalg.norm(s_next[self.state_idxs[0],:] - s_next[self.state_idxs[1],:])
+		# 	shape = k * float(d - dn)   # >0 表示追击者更接近了
 
-			r2 += shape  # pursuer gets positive for progress
-			r1 -= shape  # evader gets negative for pursuer's progress
-		reward = np.array([[r1],[r2]])
+		# 	r2 += shape  # pursuer gets positive for progress
+		# 	r1 -= shape  # evader gets negative for pursuer's progress
+		# reward = np.array([[r1],[r2]])
 		return reward
 
 	def gt_action(self, state, robot):
@@ -195,8 +219,18 @@ class Example8(Problem):
 	# 	reward = np.array([[r1],[r2]])
 	# 	return reward
 
-	def is_captured(self,s):
-		return np.linalg.norm(s[self.state_idxs[0],:]-s[self.state_idxs[1],:]) < self.desired_distance
+	# def is_captured(self,s):
+	# 	return np.linalg.norm(s[self.state_idxs[0],:]-s[self.state_idxs[1],:]) < self.desired_distance
+
+	def is_captured(self, s):
+		evaders = [0, 1]     # robot index
+		pursuers = [2, 3]
+		min_dist = np.inf
+		for e in evaders:
+			for p in pursuers:
+				de = s[self.state_idxs[e], :] - s[self.state_idxs[p], :]
+				min_dist = min(min_dist, np.linalg.norm(de))
+		return min_dist < self.desired_distance
 
 
 	def step(self,s,a,dt):
@@ -205,7 +239,7 @@ class Example8(Problem):
 			Fd = np.eye(len(self.state_idxs[robot])) +  dt * self.Fc 
 			Bd = dt * self.Bc 
 			s_tp1[self.state_idxs[robot],:] = np.dot(Fd,s[self.state_idxs[robot],:]) + np.dot(Bd,a[self.action_idxs[robot],:])
-		s_tp1[4,0] = s[4,0] + dt 
+		s_tp1[8,0] = s[8,0] + dt 
 		return s_tp1 
 
 	def render(self,states=None,fig=None,ax=None):
@@ -228,16 +262,20 @@ class Example8(Problem):
 				
 			# ax.set_aspect(lims[0,1]-lims[0,0] / lims[1,1]-lims[1,0])
 
-				if robot == 0:
-					circ = patches.Circle((states[-1,0], states[-1,1]), \
+				if robot in [0, 1]:
+					circ = patches.Circle((states[-1,robot_state_idxs[0]], states[-1,robot_state_idxs[1]]), \
 						self.desired_distance,facecolor='green',alpha=0.5)
 					ax.add_patch(circ)
 
 			for robot in range(self.num_robots):
 				if robot == 0:
-					label = "Evader"
+					label = "Evader1"
 				elif robot == 1:
-					label = "Pursuer"
+					label = "Evader2"
+				elif robot == 2:
+					label = "Pursuer1"
+				elif robot == 3:
+					label = "Pursuer2"
 				ax.plot(np.nan,np.nan,color=colors[robot],label=label)
 			ax.legend(loc='best')
 

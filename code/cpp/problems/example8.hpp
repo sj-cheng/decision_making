@@ -75,7 +75,7 @@ class Example8 : public Problem {
                     Bd * action.block(m_action_idxs[ii][0],0,m_action_idxs[ii].size(),1);
             }   
             
-            next_state(4,0) = state(4,0) + timestep;
+            next_state(8,0) = state(8,0) + timestep;
             return next_state;
 		}
 
@@ -95,32 +95,48 @@ class Example8 : public Problem {
 			auto next_statee = step(state, action, m_timestep);
 			Eigen::Matrix<float,-1,1> r(m_num_robots,1);
 			r.setZero();
-			if (is_captured(state) || state(4,0) >= m_tf){
-				float t = std::min(next_statee(4,0), m_tf);
-				r(0,0) = t / m_tf;
-				r(1,0) = 1.0 - r(0,0);
-			} else if ( !(
-				(next_statee.block(0,0,2,1).array() >= m_state_lims.block(0,0,2,1).array()).all() && 
-				(next_statee.block(0,0,2,1).array() <= m_state_lims.block(0,1,2,1).array()).all() )) {
-				r(0,0) = -1.0;
-			} else if ( !(
-				(next_statee.block(2,0,2,1).array() >= m_state_lims.block(2,0,2,1).array()).all() &&
-				(next_statee.block(2,0,2,1).array() <= m_state_lims.block(2,1,2,1).array()).all() )) {
-				r(1,0) = -1.0;
-			}
-			    else {
-			// ---- minimal progress shaping (dense signal, anti-hover) ----
-			// reward pursuer for reducing distance: shape = k*(d - dn)
-			const float k = 0.05f;  // 0.02~0.05 先试 0.03
+				float r1=0.0 , r2=0.0;
+			if (is_captured(next_statee) || next_statee(8,0) >= m_tf){
+				r1 = next_statee(8,0) / m_tf;
+				r2 = 1 - r1;
+				printf("captured or terminal: r1=%f, r2=%f\n", r1, r2);
+			} 
+            r(0,0)=r1; r(1,0)=r1; r(2,0)=r2; r(3,0)=r2;
+            
+        
+            for (int j=0; j<m_num_robots; ++j){
+                int s0 = m_state_idxs[j][0];
+                int sd = (int)m_state_idxs[j].size();
+                bool in_low  = (next_statee.block(s0,0,sd,1).array() >= m_state_lims.block(s0,0,sd,1).array()).all();
+                bool in_high = (next_statee.block(s0,0,sd,1).array() <= m_state_lims.block(s0,1,sd,1).array()).all();
+                if (!(in_low && in_high)) r(j,0) = -1.0;
+            }
+		// 	if (is_captured(next_statee) || next_statee(4,0) >= m_tf){
+		// 		float t = std::min(next_statee(4,0), m_tf);
+		// 		r(0,0) = t / m_tf;
+		// 		r(1,0) = 1.0 - r(0,0);
+		// 	} else if ( !(
+		// 		(next_statee.block(0,0,2,1).array() >= m_state_lims.block(0,0,2,1).array()).all() && 
+		// 		(next_statee.block(0,0,2,1).array() <= m_state_lims.block(0,1,2,1).array()).all() )) {
+		// 		r(0,0) = -1.0;
+		// 	} else if ( !(
+		// 		(next_statee.block(2,0,2,1).array() >= m_state_lims.block(2,0,2,1).array()).all() &&
+		// 		(next_statee.block(2,0,2,1).array() <= m_state_lims.block(2,1,2,1).array()).all() )) {
+		// 		r(1,0) = -1.0;
+		// 	}
+		// 	    else {
+		// 	// ---- minimal progress shaping (dense signal, anti-hover) ----
+		// 	// reward pursuer for reducing distance: shape = k*(d - dn)
+		// 	const float k = 0.05f;  // 0.02~0.05 先试 0.03
 
-			const float d  = (state.block(0,0,2,1)      - state.block(2,0,2,1)).norm();
-			const float dn = (next_statee.block(0,0,2,1) - next_statee.block(2,0,2,1)).norm();
+		// 	const float d  = (state.block(0,0,2,1)      - state.block(2,0,2,1)).norm();
+		// 	const float dn = (next_statee.block(0,0,2,1) - next_statee.block(2,0,2,1)).norm();
 
-			const float shape = k * (d - dn);  // >0 means pursuer got closer
+		// 	const float shape = k * (d - dn);  // >0 means pursuer got closer
 
-			r(1,0) += shape;  // pursuer +
-			r(0,0) -= shape;  // evader  -
-		}
+		// 	r(1,0) += shape;  // pursuer +
+		// 	r(0,0) -= shape;  // evader  -
+		// }
 			return r;
         }
 
@@ -160,7 +176,15 @@ class Example8 : public Problem {
         }
 
         bool is_captured(Eigen::Matrix<float,-1,1> state) {
-        	return (state.block(0,0,2,1) - state.block(2,0,2,1)).norm() < m_dist;
+        	//return (state.block(0,0,2,1) - state.block(2,0,2,1)).norm() < m_dist;
+			float min_d=1e5;
+			for (int e=0; e<2; ++e){
+    			for (int p=2; p<4; ++p){
+        			float d = (state.block(m_state_idxs[e][0],0,2,1) - state.block(m_state_idxs[p][0],0,2,1)).norm();
+        			if (d < min_d) min_d = d;
+    			}
+			}
+        	return min_d < m_dist;
         }
 		
 };

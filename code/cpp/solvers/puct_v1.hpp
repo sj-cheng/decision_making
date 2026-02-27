@@ -103,13 +103,18 @@ class PUCT_V1 : public Solver {
 				path[max_depth] = curr_node_ptr; 
 
 				for (int d = 0; d <= max_depth; d++){
+					int start_depth = (d == 0) ? 0 : (d - 1);
 					path[d]->num_visits += 1;
-					path[d]->total_value += calc_value(rewards,d,max_depth+1,problem->m_gamma,problem->m_num_robots);
+					path[d]->total_value += calc_value(rewards,start_depth,max_depth+1,problem->m_gamma,problem->m_num_robots);
 				}
 			};
 
 			solver_result.success = true;
-			solver_result.best_action = most_visited(root_node_ptr,0)->action_to_node; 
+			Node* best_action_node = most_visited(root_node_ptr,turn);
+			if (best_action_node == nullptr){
+				best_action_node = best_value_child(root_node_ptr,turn);
+			}
+			solver_result.best_action = best_action_node->action_to_node; 
 			solver_result.child_distribution = export_child_distribution(problem);
 			solver_result.tree = export_tree(problem);
 			solver_result.value = root_node_ptr->total_value / root_node_ptr->num_visits;
@@ -183,6 +188,21 @@ class PUCT_V1 : public Solver {
 			for (Node* c : node_ptr->children) {
 				if (c->num_visits > mostVisits) {
 					mostVisits = c->num_visits;
+					result = c;
+				}
+			}
+			return result;
+		}
+
+		Node* best_value_child(Node* node_ptr,int robot_turn){
+			Node* result = nullptr;
+			float bestValue = -std::numeric_limits<float>::infinity();
+			for (Node* c : node_ptr->children) {
+				if (c == nullptr || c->num_visits <= 0) continue;
+				float q = c->total_value(robot_turn) / c->num_visits;
+				if (!std::isfinite(q)) continue;
+				if (result == nullptr || q > bestValue) {
+					bestValue = q;
 					result = c;
 				}
 			}
@@ -269,13 +289,10 @@ class PUCT_V1 : public Solver {
 				// } while (! problem->is_terminal(curr_state)) ;
 				// } while (! problem->is_terminal(curr_state) && depth < m_search_depth) ;
 
-				while (true) {
+				while ((!problem->is_terminal(curr_state)) && (depth < m_search_depth)) {
 					auto action = problem->sample_action(g_gen);
 					auto next_state = problem->step(curr_state,action,problem->m_timestep);
 					value += powf(problem->m_gamma,depth) * problem->normalized_reward(curr_state,action);
-					if ((problem->is_terminal(curr_state)) || (depth > m_search_depth)) {
-						break;
-					}
 					curr_state = next_state;
 					depth += 1;
 				}
