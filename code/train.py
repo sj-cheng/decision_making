@@ -24,8 +24,8 @@ from run import run_instance
 from util import write_dataset, get_dataset_fn, get_oracle_fn, format_dir, get_temp_fn, init_tqdm, update_tqdm
 
 # solver 
-num_simulations = 2000
-search_depth = 100
+num_simulations = 5000
+search_depth = 200
 C_pw = 2.0
 alpha_pw = 0.5
 C_exp = 1.0
@@ -40,18 +40,18 @@ policy_oracle_name = "gaussian"
 value_oracle_name = "deterministic"
 
 dirname = "../current/models"
-plot_on= True
+plot_on= False	
 # learning 
 L = 40
 mode = 1 # 0: weighted sum, 1: best child, 2: subsamples 
-num_D_pi = 2000
+num_D_pi = 5000
 # num_D_pi = 500
 # num_D_pi = 200
-num_pi_eval = 500
+num_pi_eval = 1000
 num_D_v = 5000
 num_v_eval = 1000
 num_subsamples = 5
-num_self_play_plots = 10
+num_self_play_plots = 20
 learning_rate = 7e-4
 num_epochs = 200
 # num_epochs = 100
@@ -211,6 +211,7 @@ def make_expert_demonstration_pi(problem,robot,policy_oracle,value_oracle):
 	paths = []
 	if parallel_on: 
 		ncpu = mp.cpu_count() - 1
+		print("Total CPU:{}".format(ncpu))
 		num_per_pool = int(num_D_pi / ncpu)
 
 		seeds = [] 
@@ -600,7 +601,7 @@ def self_play(problem,policy_oracle,value_oracle,l):
 	# 	pool.join()
 	# else:
 	# 	sim_results = [run_instance(0,Queue(),len(instance["problem"].times),instance,verbose=False,tqdm_on=True)]
-	if plot_on:
+	if 1:
 		for sim_result in sim_results:
 			plotter.plot_sim_result(sim_result)
 			problem.render(states=sim_result["states"])
