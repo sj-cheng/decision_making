@@ -153,8 +153,8 @@ if __name__ == '__main__':
 
 	if param.movie_on: 
 		print('making movie...')
-		plotter.make_movie(sim_results[0],sim_results[0]["instance"],"../current/plots/vid.mp4")
-		plotter.open_figs("../current/plots/vid.mp4")	
+		plotter.make_movie(sim_results[0],sim_results[0]["instance"],"../current/plots/vid.gif")
+		plotter.open_figs("../current/plots/vid.gif")	
 
 	# save/load results
 	# todo

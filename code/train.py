@@ -115,6 +115,26 @@ class TensorBatchLoader:
 		return (self.size + self.batch_size - 1) // self.batch_size
 
 # policy demonstration functions 
+def sample_reachable_state(problem, policy_oracle=None):
+    state = problem.initialize()
+
+    if policy_oracle is not None and any(p is not None for p in policy_oracle):
+        rollout_solver = get_solver("NeuralNetwork", policy_oracle=policy_oracle)
+    else:
+        rollout_solver = None
+
+    k = np.random.randint(0, len(problem.times) - 1)
+    for _ in range(k):
+        if problem.is_terminal(state):
+            break
+        if rollout_solver is None:
+            action = problem.sample_action()
+        else:
+            action = rollout_solver.policy(problem, state)
+        state = problem.step(state, action, problem.dt)
+
+    return state
+
 def worker_edp_wrapper(arg):
 	return worker_edp(*arg)
 
@@ -143,7 +163,9 @@ def worker_edp(rank,queue,seed,fn,problem,robot,num_per_pool,policy_oracle,value
 	failure_count = 0
  
 	while count < num_per_pool:
-		state = problem.initialize()
+		state = sample_reachable_state(problem, policy_oracle)
+		if problem.is_terminal(state):
+			continue
 		root_node = solver.search(problem,state,turn=robot)
 
 		if False:
@@ -307,7 +329,9 @@ def worker_edv(rank,queue,fn,seed,problem,num_states_per_pool,policy_oracle):
 	pbar = init_tqdm(rank,num_D_v)
 	datapoints = []
 	while len(datapoints) < num_states_per_pool:	
-		state = problem.initialize()
+		state = sample_reachable_state(problem, policy_oracle)
+		if problem.is_terminal(state):
+			continue
 		instance["initial_state"] = state
   		# 使用和run.py一样的接口
 		sim_result = run_instance(0,Queue(),0,instance,verbose=False,tqdm_on=False)		
@@ -587,20 +611,7 @@ def self_play(problem,policy_oracle,value_oracle,l):
 		sim_result = run_instance(0,Queue(),0,instance,verbose=False,tqdm_on=False)
 		sim_results.append(sim_result)
 
-	# if parallel_on:
-	# 	pool = mp.Pool(mp.cpu_count() - 1)
-	# 	params = [Param() for _ in range(num_self_play_plots)]
-	# 	seeds = [np.random.randint(10000) for _ in range(num_self_play_plots)]
-	# 	args = list(zip(
-	# 		itertools.count(), 
-	# 		itertools.repeat(mp.Manager().Queue()),
-	# 		itertools.repeat(param.num_self_play_plots),
-	# 		params,seeds))
-	# 	sim_results = pool.imap_unordered(_worker_run_instance, args)
-	# 	pool.close()
-	# 	pool.join()
-	# else:
-	# 	sim_results = [run_instance(0,Queue(),len(instance["problem"].times),instance,verbose=False,tqdm_on=True)]
+	
 	if 1:
 		for sim_result in sim_results:
 			plotter.plot_sim_result(sim_result)

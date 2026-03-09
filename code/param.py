@@ -16,14 +16,14 @@ class Param:
 		self.policy_oracle_name = "gaussian" # ["deterministic","gaussian"]
 
 		# oracles 
-		oracles_on = False
+		oracles_on =False
 		dirname = "../current/models"
 		#dirname = "/home/sjc/NTE/decision_making/current/models"
 		#dirname = "/home/ben/projects/decision_making/saved/example9"
 		# dirname = "/home/ben/projects/decision_making/saved/example6"
 
 		n = 4 # num robots 
-		l = 4 # learning iteration 
+		l = 39 # learning iteration 
 		if oracles_on:
 			self.policy_oracle_paths = ["{}/model_policy_l{}_i{}.pt".format(dirname,l,i) for i in range(n)]	
 			self.value_oracle_path = "{}/model_value_l{}.pt".format(dirname,l)
@@ -32,12 +32,12 @@ class Param:
 			self.value_oracle_path = None 
 
 		# settings
-		self.movie_on = False
+		self.movie_on =False
 		self.pretty_plot_on = True
 
 		# solver settings 
-		self.number_simulations = 2000
-		self.search_depth = 40
+		self.number_simulations = 1000
+		self.search_depth = 100
 		self.C_pw = 2.0							# 每个节点最多能扩展多少个子节点
 		self.alpha_pw = 0.5						# 访问次数增加时，子节点上限增长有多块 
 		self.C_exp = 1.0						# 探索项的权重，越大越倾向于探索

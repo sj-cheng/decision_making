@@ -28,7 +28,14 @@ class Example8(Problem):
 		self.state_control_weight = 1e-5 
 		self.desired_distance = 1.0
 		self.init_min_dist = 2.0
+		self.evaders = [0, 1]
+		self.pursuers = [2, 3]
+		self.turn_groups = [np.array([0, 1]), np.array([2, 3])]
+		self.time_idx = 8
+		self.active_idxs = [9, 10, 11, 12]
 
+		self.state_dim = 13
+		self.action_dim = 8
 		self.state_idxs = [
 			np.array([0,1]),  # E1
 			np.array([2,3]),  # E2
@@ -41,9 +48,6 @@ class Example8(Problem):
 			np.array([4,5]),  # P1 action
 			np.array([6,7]),  # P2 action
 		]
-
-		self.state_dim = 9
-		self.action_dim = 8
 		#self.times = np.arange(self.t0,self.tf,self.dt)
 		self.times = np.arange(self.t0,self.tf+self.dt,self.dt)
 		self.policy_encoding_dim = self.state_dim
@@ -59,12 +63,14 @@ class Example8(Problem):
 			(-10,10), 
 			(-10,10),
 			(0,self.tf),
+			(0,1),
+			(0,1),
+			(0,1),
+			(0,1),
 			))
 		self.approx_dist = (self.state_lims[0,1] - self.state_lims[0,0])/10 
 
 		self.action_lims = np.array((
-			# (-0.0,0.0),
-			# (-0.0,0.0),
 			# (-0.0,0.0),
 			# (-0.0,0.0),
 			# (-0.0,0.0),
@@ -89,6 +95,7 @@ class Example8(Problem):
 			(-8,8), (-8,8),
 			(-8,8), (-8,8),
 			(0,0),
+			(1,1), (1,1), (1,1), (1,1),
 			))
 
 		self.Fc = np.array((
@@ -104,6 +111,45 @@ class Example8(Problem):
 		self.Q = np.eye(2)
 		self.Ru = self.state_control_weight * np.eye(2)
 
+	def is_active(self, state, robot):
+		return state[self.active_idxs[robot], 0] > 0.5
+	def active_evader_count(self, state):
+		return sum(self.is_active(state, e) for e in self.evaders)
+	def active_pursuer_count(self, state):
+		return sum(self.is_active(state, p) for p in self.pursuers)
+	def min_cross_team_dist(self, state):
+		min_dist = np.inf
+		for e in self.evaders:
+			for p in self.pursuers:
+				d = np.linalg.norm(state[self.state_idxs[e], :] - state[self.state_idxs[p], :])
+				min_dist = min(min_dist, d)
+		return min_dist
+	def get_capture_pairs(self, state):
+		candidates = []
+		for p in self.pursuers:
+			if not self.is_active(state, p):
+				continue
+			for e in self.evaders:
+				if not self.is_active(state, e):
+					continue
+				d = np.linalg.norm(state[self.state_idxs[p], :] - state[self.state_idxs[e], :])
+				if d < self.desired_distance:
+					candidates.append((d, p, e))
+
+		candidates.sort(key=lambda x: x[0]) #candidates里的元素是(d,p,e)，按照d排序，d越小越靠前
+
+		matched_p = set()
+		matched_e = set() 
+		capture_pairs = []
+		for _, p, e in candidates:
+			if p in matched_p or e in matched_e:
+				continue
+			matched_p.add(p)
+			matched_e.add(e)
+			capture_pairs.append((p, e))
+
+		return capture_pairs
+
 	def reward(self,s,a): 
 		reward = self.normalized_reward(s,a) 
 		return reward
@@ -113,9 +159,10 @@ class Example8(Problem):
 		valid = False
 		while not valid:
 			state = sample_vector(self.init_lims)
-			r1_pos = state[self.state_idxs[0],:]
-			r2_pos = state[self.state_idxs[1],:]
-			valid = not self.is_terminal(state) and np.linalg.norm(r1_pos - r2_pos) > self.init_min_dist
+			state[self.time_idx, 0] = 0.0
+			for idx in self.active_idxs:
+				state[idx, 0] = 1.0
+			valid = not self.is_terminal(state) and (self.min_cross_team_dist(state) > 2*self.init_min_dist)
 		return state
 
 	def normalized_reward(self,s,a):
@@ -123,12 +170,17 @@ class Example8(Problem):
 		r1 = 0.0
 		r2 = 0.0
 		reward = np.array([[r1], [r1], [r2], [r2]], dtype=float)
-		if self.is_captured(s_next) or s_next[8,0] >= self.tf:
-			t = min(s_next[8,0], self.tf)
-			r1 = t / self.tf		# 逃跑者，被抓住越晚越好
-			r2 = 1.0 - r1 			# 追捕者，抓住越快越好
-			reward = np.array([[r1],[r1],[r2],[r2]],dtype=float)
-		
+		newly_captured = self.active_evader_count(s) - self.active_evader_count(s_next)
+		if newly_captured > 0:
+			t = min(s_next[self.time_idx, 0], self.tf)
+			evader_reward = 0.5*newly_captured * (t / self.tf)	
+			pursuer_reward = 0.5*newly_captured * (1.0 - t / self.tf)
+			reward[self.evaders, 0] = evader_reward
+			reward[self.pursuers, 0] = pursuer_reward
+		if s_next[self.time_idx, 0] >= self.tf:
+			t = min(s_next[self.time_idx, 0], self.tf)
+			surviving_evaders = self.active_evader_count(s_next)
+			reward[self.evaders, 0] += 0.5*surviving_evaders 
 		for robot in range (self.num_robots):
 			if not contains(s_next[self.state_idxs[robot],:],self.state_lims[self.state_idxs[robot],:]):
 				reward[robot,0]= -1.0
@@ -197,23 +249,24 @@ class Example8(Problem):
 		return values[robot:robot+1, :]
 	
 	def is_captured(self, s):
-		evaders = [0, 1]     # robot index
-		pursuers = [2, 3]
-		min_dist = np.inf
-		for e in evaders:
-			for p in pursuers:
-				de = s[self.state_idxs[e], :] - s[self.state_idxs[p], :]
-				min_dist = min(min_dist, np.linalg.norm(de))
-		return min_dist < self.desired_distance
+		return len(self.get_capture_pairs(s)) > 0
 
 
 	def step(self,s,a,dt):
-		s_tp1 = np.zeros(s.shape)
+		s_tp1 = np.array(s,copy=True)
 		for robot in range(self.num_robots):
+			s_tp1[self.active_idxs[robot], 0] = s[self.active_idxs[robot], 0]
+			if not self.is_active(s, robot):
+				s_tp1[self.state_idxs[robot],:] = s[self.state_idxs[robot],:]
+				continue
+
 			Fd = np.eye(len(self.state_idxs[robot])) +  dt * self.Fc 
 			Bd = dt * self.Bc 
 			s_tp1[self.state_idxs[robot],:] = np.dot(Fd,s[self.state_idxs[robot],:]) + np.dot(Bd,a[self.action_idxs[robot],:])
-		s_tp1[8,0] = s[8,0] + dt 
+		s_tp1[self.time_idx, 0] = s[self.time_idx, 0] + dt
+		for p, e in self.get_capture_pairs(s_tp1):
+			s_tp1[self.active_idxs[p], 0] = 0.0
+			s_tp1[self.active_idxs[e], 0] = 0.0
 		return s_tp1 
 
 	def render(self,states=None,fig=None,ax=None):
@@ -262,13 +315,15 @@ class Example8(Problem):
 
 	def is_terminal(self,state):
 		# return not self.is_valid(state)
-		return (not self.is_valid(state)) or self.is_captured(state) 
+		#return (not self.is_valid(state)) or self.is_captured(state) 
+		return ((not self.is_valid(state)) or self.active_evader_count(state) == 0 or self.active_pursuer_count(state) == 0) 
 
 	def is_valid(self,state):
 		return contains(state,self.state_lims)
 
 	def policy_encoding(self,state,robot):
-		return state
+		idx = np.array([0,1,2,3,4,5,6,7,9,10,11,12,8])
+		return state[idx]
 
 	def value_encoding(self,state):
 		return state 

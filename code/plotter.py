@@ -379,7 +379,7 @@ def make_movie(sim_result,instance,filename):
 	# animate over trajectory
 	def animate(i_t):
 		init()
-		print(i_t/len(times))
+		#print(i_t/len(times))
 		time_idxs = range(i_t) #times[0:i_t]
 		states_i = states[time_idxs]
 		if i_t < 2:
@@ -390,4 +390,4 @@ def make_movie(sim_result,instance,filename):
 
 	ln = ax.plot([],[],[])
 	anim = animation.FuncAnimation(fig, animate, frames=len(times)+1, interval=1)
-	anim.save(filename, fps=10, dpi=1000)
+	anim.save(filename, fps=10, dpi=120)
