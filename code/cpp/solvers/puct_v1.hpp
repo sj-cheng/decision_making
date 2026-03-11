@@ -52,7 +52,21 @@ class PUCT_V1 : public Solver {
 			}
 		};
 
+		int tree_turn(Problem * problem, int turn, int depth) {
+			// 对 2v2 的 example8：只在 0 和 2 两个“代表 turn”之间轮换
+			if (problem->m_num_robots == 4) {
+				int root_turn = turn;
+				if (root_turn == 1) root_turn = 0;
+				if (root_turn == 3) root_turn = 2;
 
+				if (root_turn == 0 || root_turn == 2) {
+					if (depth % 2 == 0) return root_turn;
+					return (root_turn == 0) ? 2 : 0;
+				}
+			}
+
+			return (depth + turn) % problem->m_num_robots;
+		}
 		Solver_Result search(Problem * problem, Eigen::Matrix<float,-1,1> root_state, int turn){			
 
 			Solver_Result solver_result;
@@ -79,7 +93,7 @@ class PUCT_V1 : public Solver {
 
 				int max_depth = m_search_depth;
 				for (int d = 0; d < m_search_depth; d++){
-					int robot_turn = (d + turn) % problem->m_num_robots;
+					int robot_turn = tree_turn(problem, turn, d);
 					Node* child_node_ptr;
 					if (is_expanded(curr_node_ptr)){
 						child_node_ptr = best_child(curr_node_ptr,robot_turn);
@@ -110,10 +124,15 @@ class PUCT_V1 : public Solver {
 			};
 
 			solver_result.success = true;
-			Node* best_action_node = most_visited(root_node_ptr,turn);
+			int root_eval_turn = tree_turn(problem, turn, 0);
+			Node* best_action_node = most_visited(root_node_ptr, root_eval_turn);
 			if (best_action_node == nullptr){
-				best_action_node = best_value_child(root_node_ptr,turn);
+				best_action_node = best_value_child(root_node_ptr, root_eval_turn);
 			}
+			// Node* best_action_node = most_visited(root_node_ptr,turn);
+			// if (best_action_node == nullptr){
+			// 	best_action_node = best_value_child(root_node_ptr,turn);
+			// }
 			solver_result.best_action = best_action_node->action_to_node; 
 			solver_result.child_distribution = export_child_distribution(problem);
 			solver_result.tree = export_tree(problem);

@@ -177,8 +177,8 @@ class Example8(Problem):
 			pursuer_reward = 0.5*newly_captured * (1.0 - t / self.tf)
 			reward[self.evaders, 0] = evader_reward
 			reward[self.pursuers, 0] = pursuer_reward
-		if s_next[self.time_idx, 0] >= self.tf:
-			t = min(s_next[self.time_idx, 0], self.tf)
+		if (s[self.time_idx, 0] < self.tf) and (s_next[self.time_idx, 0] >= self.tf):
+			#t = min(s_next[self.time_idx, 0], self.tf)
 			surviving_evaders = self.active_evader_count(s_next)
 			reward[self.evaders, 0] += 0.5*surviving_evaders 
 		for robot in range (self.num_robots):
@@ -316,14 +316,13 @@ class Example8(Problem):
 	def is_terminal(self,state):
 		# return not self.is_valid(state)
 		#return (not self.is_valid(state)) or self.is_captured(state) 
-		return ((not self.is_valid(state)) or self.active_evader_count(state) == 0 or self.active_pursuer_count(state) == 0) 
+		return ((not self.is_valid(state)) or self.active_evader_count(state) == 0 or self.active_pursuer_count(state) == 0) or state[self.time_idx, 0] >= self.tf
 
 	def is_valid(self,state):
 		return contains(state,self.state_lims)
 
 	def policy_encoding(self,state,robot):
-		idx = np.array([0,1,2,3,4,5,6,7,9,10,11,12,8])
-		return state[idx]
+		return state
 
 	def value_encoding(self,state):
 		return state 
@@ -452,7 +451,7 @@ class Example8(Problem):
 		if value_plot_on or policy_plot_on:
 
 			
-			for robot in [0,1]:
+			for robot in [0,1,2,3]:
 
 				fig,ax = plt.subplots()
 				inital_state = sim_result["states"][0]

@@ -50,7 +50,7 @@ class GaussianPolicyNetwork(torch.nn.Module):
 
 
 	def forward(self,x,training=False):
-		x[:,-1] = 0 # zero out the last element of the encoding, which is the time encoding, to make the policy time-invariant.
+		x[:,8] = 0 # zero out the last element of the encoding, which is the time encoding, to make the policy time-invariant.
 		dist = self.psi(x)
 		mu, logvar = torch.split(dist, 2, dim=1)
 

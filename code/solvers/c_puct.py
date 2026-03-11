@@ -49,6 +49,22 @@ class C_PUCT(Solver):
 
 	def policy(self,problem,root_state):
 		py_action = np.zeros((problem.action_dim,1))
+
+		if hasattr(problem, "turn_groups"):
+			for group in problem.turn_groups:
+				turn = int(group[0])   # 用队里的第一个机器人做代表
+				result = self.search(problem, root_state, turn=turn) 
+				if not result.success:
+					continue
+
+				for robot in group:
+					robot_action_idxs = problem.action_idxs[robot]
+					py_action[robot_action_idxs,0] = result.best_action[robot_action_idxs]
+
+					if hasattr(problem, "is_active") and (not problem.is_active(root_state, robot)):
+						py_action[robot_action_idxs,0] = 0.0
+
+			return py_action
 		for robot in range(problem.num_robots): 
 			robot_action_idxs = problem.action_idxs[robot]
 			result = self.search(problem,root_state,turn=robot)
