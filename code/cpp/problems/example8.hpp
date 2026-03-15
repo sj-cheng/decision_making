@@ -178,7 +178,7 @@ class Example8 : public Problem {
 				r(0,0)=r1; r(1,0)=r1; r(2,0)=r2; r(3,0)=r2;
 			} 
             
-            if ((next_state(m_time_idx,0) >= m_tf) && (next_state(m_time_idx,0) >= m_tf)){
+            if ((state(m_time_idx,0) < m_tf) && (next_state(m_time_idx,0) >= m_tf)){
 				int surviving_evaders = active_evader_count(next_state);
 				for (int e : m_evaders) {
 					r(e,0) += 0.5f * surviving_evaders;

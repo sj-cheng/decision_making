@@ -82,6 +82,7 @@ class GaussianPolicyNetwork(torch.nn.Module):
 
 	def eval(self,problem,root_state,robot):
 		super().eval()
+		self.action_lims = problem.action_lims
 		policy_encoding = problem.policy_encoding(root_state,robot)
 		policy_encoding = torch.tensor(policy_encoding,dtype=torch.float32).squeeze().unsqueeze(0) # [batch_size x state_dim]
 		policy = self(policy_encoding).detach().numpy().reshape(int(self.output_dim/2),1) # [action_dim_per_robot x 1]

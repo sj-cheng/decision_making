@@ -7,7 +7,7 @@ class Param:
 
 		# 
 		self.parallel_on = True
-		self.num_trials = 15 
+		self.num_trials = 100 
 
 		# names 
 		self.problem_name = "example8" # e.g. example1, example2, example3, ...
@@ -23,7 +23,7 @@ class Param:
 		# dirname = "/home/ben/projects/decision_making/saved/example6"
 
 		n = 4 # num robots 
-		l =25 # learning iteration 
+		l =39 # learning iteration 
 		if oracles_on:
 			self.policy_oracle_paths = ["{}/model_policy_l{}_i{}.pt".format(dirname,l,i) for i in range(n)]	
 			self.value_oracle_path = "{}/model_value_l{}.pt".format(dirname,l)
@@ -32,7 +32,7 @@ class Param:
 			self.value_oracle_path = None 
 
 		# settings
-		self.movie_on =False
+		self.movie_on =False	
 		self.pretty_plot_on = True
 
 		# solver settings 

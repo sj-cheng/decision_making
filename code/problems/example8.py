@@ -70,24 +70,50 @@ class Example8(Problem):
 			))
 		self.approx_dist = (self.state_lims[0,1] - self.state_lims[0,0])/10 
 
+		self.evader_speed_lim_range = (1.0, 1.01)
+		self.pursuer_speed_lim_range = (1.0, 1.01)
+		self.current_evader_speed_lim = 1.0
+		self.current_pursuer_speed_lim = 1.0
+
+		self.update_action_lims()
+
+	def update_action_lims(self):
 		self.action_lims = np.array((
-			# (-0.0,0.0),
-			# (-0.0,0.0),
-			# (-0.0,0.0),
-			# (-0.0,0.0),
+			(-self.current_evader_speed_lim, self.current_evader_speed_lim),
+			(-self.current_evader_speed_lim, self.current_evader_speed_lim),
 
-			(-0.5,0.5),
-			(-0.5,0.5),
+			(-self.current_evader_speed_lim, self.current_evader_speed_lim),
+			(-self.current_evader_speed_lim, self.current_evader_speed_lim),
 
-			(-0.5,0.5),
-			(-0.5,0.5),
+			(-self.current_pursuer_speed_lim, self.current_pursuer_speed_lim),
+			(-self.current_pursuer_speed_lim, self.current_pursuer_speed_lim),
 
-			(-1.0,1.0),
-			(-1.0,1.0),
+			(-self.current_pursuer_speed_lim, self.current_pursuer_speed_lim),
+			(-self.current_pursuer_speed_lim, self.current_pursuer_speed_lim),
+		))
 
-			(-1.0,1.0),
-			(-1.0,1.0),
-			))
+	def randomize_speed_limits(self):
+		self.current_evader_speed_lim = np.random.uniform(*self.evader_speed_lim_range)
+		self.current_pursuer_speed_lim = np.random.uniform(*self.pursuer_speed_lim_range)
+		self.update_action_lims()
+		# self.action_lims = np.array((
+		# 	# (-0.0,0.0),
+		# 	# (-0.0,0.0),
+		# 	# (-0.0,0.0),
+		# 	# (-0.0,0.0),
+
+		# 	(-1.0,1.0),
+		# 	(-1.0,1.0),
+
+		# 	(-1.0,1.0),
+		# 	(-1.0,1.0),
+
+		# 	(-1.0,1.0),
+		# 	(-1.0,1.0),
+
+		# 	(-1.0,1.0),
+		# 	(-1.0,1.0),
+		# 	))
 
 		self.init_lims = np.array((
 			(-8,8), (-8,8),
@@ -158,6 +184,7 @@ class Example8(Problem):
 	def initialize(self):
 		valid = False
 		while not valid:
+			self.randomize_speed_limits()
 			state = sample_vector(self.init_lims)
 			state[self.time_idx, 0] = 0.0
 			for idx in self.active_idxs:

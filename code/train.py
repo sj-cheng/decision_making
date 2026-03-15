@@ -42,14 +42,14 @@ value_oracle_name = "deterministic"
 dirname = "../current/models"
 plot_on= False	
 # learning 
-L = 40
+L = 80
 mode = 1 # 0: weighted sum, 1: best child, 2: subsamples 
 num_D_pi = 20000
 # num_D_pi = 500
 # num_D_pi = 200
-num_pi_eval = 1000
+num_pi_eval = 2000
 num_D_v = 20000
-num_v_eval = 1000
+num_v_eval = 2000
 num_subsamples = 5
 num_self_play_plots = 20
 learning_rate = 7e-4
