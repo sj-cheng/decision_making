@@ -7,7 +7,7 @@ class Param:
 
 		# 
 		self.parallel_on = True
-		self.num_trials = 100 
+		self.num_trials = 200 
 
 		# names 
 		self.problem_name = "example8" # e.g. example1, example2, example3, ...

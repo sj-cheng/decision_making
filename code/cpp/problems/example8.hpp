@@ -132,16 +132,17 @@ class Example8 : public Problem {
 			Eigen::Matrix<float,2,2> Bd = m_Bc * timestep; 
 
             // dynamics 
-            for (int ii = 0; ii < m_num_robots; ii++){
+			for (int ii = 0; ii < m_num_robots; ii++){
 				next_state(m_active_idxs[ii], 0) = state(m_active_idxs[ii], 0);
 				if (!is_active(state, ii)) {
             	next_state.block(m_state_idxs[ii][0],0,m_state_idxs[ii].size(),1) =
             	    state.block(m_state_idxs[ii][0],0,m_state_idxs[ii].size(),1);
            		continue;
 			}
+				auto control = action.block(m_action_idxs[ii][0],0,m_action_idxs[ii].size(),1) / timestep;
                 next_state.block(m_state_idxs[ii][0],0,m_state_idxs[ii].size(),1) = 
                     Fd * state.block(m_state_idxs[ii][0],0,m_state_idxs[ii].size(),1) + 
-                    Bd * action.block(m_action_idxs[ii][0],0,m_action_idxs[ii].size(),1);
+                    Bd * control;
             }   
 
             next_state(8,0) = state(8,0) + timestep;
@@ -215,4 +216,3 @@ class Example8 : public Problem {
         }
 		
 };
-

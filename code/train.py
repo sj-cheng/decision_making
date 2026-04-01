@@ -24,7 +24,7 @@ from run import run_instance
 from util import write_dataset, get_dataset_fn, get_oracle_fn, format_dir, get_temp_fn, init_tqdm, update_tqdm
 
 # solver 
-num_simulations = 2000
+num_simulations = 3000
 search_depth = 200
 C_pw = 2.0
 alpha_pw = 0.5
@@ -51,7 +51,7 @@ num_pi_eval = 2000
 num_D_v = 20000
 num_v_eval = 2000
 num_subsamples = 5
-num_self_play_plots = 20
+num_self_play_plots = 10
 learning_rate = 7e-4
 num_epochs = 200
 # num_epochs = 100
@@ -232,7 +232,7 @@ def make_expert_demonstration_pi(problem,robot,policy_oracle,value_oracle):
 
 	paths = []
 	if parallel_on: 
-		ncpu = mp.cpu_count() - 1
+		ncpu = mp.cpu_count() - 22
 		print("Total CPU:{}".format(ncpu))
 		num_per_pool = int(num_D_pi / ncpu)
 
@@ -486,7 +486,7 @@ def train_model(problem,train_dataset,test_dataset,l,oracle_name,robot=0):
 			best_test_loss = test_epoch_loss
 			state_dict_cpu = {k: v.detach().cpu() for k, v in model.state_dict().items()}
 			torch.save(state_dict_cpu,model_fn)
-	if plot_on:
+	if 1:
 		plotter.plot_loss(losses)
 		plotter.save_figs("{}/losses_{}_l{}_i{}.pdf".format(dirname,oracle_name,l,robot))
 	print('training model completed in {}s.'.format(time.time()-start_time))
@@ -576,6 +576,10 @@ def eval_policy(problem,l,robot):
 		encoding = problem.policy_encoding(state,robot)
 		encoding = torch.tensor(encoding,dtype=torch.float32).squeeze().unsqueeze(0) # [batch_size x state_dim]
 		mu, logvar = policy_oracle(encoding,training=True) # mu in [1 x robot_action_dim]
+		if hasattr(policy_oracle, "sync_action_lims"):
+			policy_oracle.sync_action_lims(problem)
+		if hasattr(policy_oracle, "scale_action"):
+			mu = policy_oracle.scale_action(mu)
 		mu = mu.detach().numpy().reshape((robot_action_dim,1))
 		sd = np.sqrt(np.exp(logvar.detach().numpy().reshape((robot_action_dim,1))))
 		action = np.concatenate((mu,sd),axis=0)

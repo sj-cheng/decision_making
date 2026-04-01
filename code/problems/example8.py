@@ -26,6 +26,8 @@ class Example8(Problem):
 		self.name = "example8"
 		self.position_idx = np.arange(2) 
 		self.state_control_weight = 1e-5 
+		self.action_semantics = "relative_position_delta"
+		self.low_level_controller_name = "relative_displacement_to_velocity"
 		self.desired_distance = 1.0
 		self.init_min_dist = 2.0
 		self.evaders = [0, 1]
@@ -70,15 +72,15 @@ class Example8(Problem):
 			))
 		self.approx_dist = (self.state_lims[0,1] - self.state_lims[0,0])/10 
 
-		self.evader_speed_lim_range = (1.0, 1.01)
-		self.pursuer_speed_lim_range = (1.0, 1.01)
+		self.evader_speed_lim_range = (1.4, 2.6)
+		self.pursuer_speed_lim_range = (1.4, 2.6)
 		self.current_evader_speed_lim = 1.0
 		self.current_pursuer_speed_lim = 1.0
 
 		self.update_action_lims()
 
 	def update_action_lims(self):
-		self.action_lims = np.array((
+		self.control_lims = np.array((
 			(-self.current_evader_speed_lim, self.current_evader_speed_lim),
 			(-self.current_evader_speed_lim, self.current_evader_speed_lim),
 
@@ -91,6 +93,7 @@ class Example8(Problem):
 			(-self.current_pursuer_speed_lim, self.current_pursuer_speed_lim),
 			(-self.current_pursuer_speed_lim, self.current_pursuer_speed_lim),
 		))
+		self.action_lims = self.dt * self.control_lims
 
 	def randomize_speed_limits(self):
 		self.current_evader_speed_lim = np.random.uniform(*self.evader_speed_lim_range)
@@ -139,6 +142,37 @@ class Example8(Problem):
 
 	def is_active(self, state, robot):
 		return state[self.active_idxs[robot], 0] > 0.5
+
+	def get_robot_speed_limit(self, robot):
+		if robot in self.evaders:
+			return self.current_evader_speed_lim
+		return self.current_pursuer_speed_lim
+
+	def get_robot_control_lims(self, robot):
+		return self.control_lims[self.action_idxs[robot], :]
+
+	def sample_action(self, state=None):
+		return sample_vector(self.action_lims)
+
+	def apply_velocity_limits(self, velocity, robot):
+		control_lims = self.get_robot_control_lims(robot)
+		return np.clip(
+			velocity,
+			control_lims[:, 0].reshape((-1, 1)),
+			control_lims[:, 1].reshape((-1, 1)),
+		)
+
+	def action_to_velocity(self, action, robot, dt):
+		delta_position = action[self.action_idxs[robot], :]
+		dt = max(dt, 1e-8)
+		desired_velocity = delta_position / dt
+		return self.apply_velocity_limits(desired_velocity, robot)
+
+	def propagate_robot_state(self, state, velocity, dt, robot):
+		Fd = np.eye(len(self.state_idxs[robot])) + dt * self.Fc
+		Bd = dt * self.Bc
+		return np.dot(Fd, state[self.state_idxs[robot], :]) + np.dot(Bd, velocity)
+
 	def active_evader_count(self, state):
 		return sum(self.is_active(state, e) for e in self.evaders)
 	def active_pursuer_count(self, state):
@@ -287,9 +321,8 @@ class Example8(Problem):
 				s_tp1[self.state_idxs[robot],:] = s[self.state_idxs[robot],:]
 				continue
 
-			Fd = np.eye(len(self.state_idxs[robot])) +  dt * self.Fc 
-			Bd = dt * self.Bc 
-			s_tp1[self.state_idxs[robot],:] = np.dot(Fd,s[self.state_idxs[robot],:]) + np.dot(Bd,a[self.action_idxs[robot],:])
+			velocity = self.action_to_velocity(a, robot, dt)
+			s_tp1[self.state_idxs[robot],:] = self.propagate_robot_state(s, velocity, dt, robot)
 		s_tp1[self.time_idx, 0] = s[self.time_idx, 0] + dt
 		for p, e in self.get_capture_pairs(s_tp1):
 			s_tp1[self.active_idxs[p], 0] = 0.0
@@ -417,9 +450,8 @@ class Example8(Problem):
 			data = np.array([np.array(xi) for xi in group])
 			encodings = data[:,0:self.state_dim]
 			target = data[:,self.state_dim:]
-
 			# quiver 
-			C = np.linalg.norm(target[:,0:1],axis=1)
+			C = np.linalg.norm(target[:,0:2],axis=1)
 			ax.quiver(encodings[:,robot_idxs[0]],encodings[:,robot_idxs[1]],\
 				target[:,0],target[:,1])
 			ax.scatter(encodings[:,robot_idxs[0]],encodings[:,robot_idxs[1]],c=C,s=2)
@@ -495,7 +527,8 @@ class Example8(Problem):
 					state = self.initialize()
 					state[not_robot_idxs,:] = inital_state[not_robot_idxs,:]
 					states.append(state)
-				states = np.array(states).squeeze()#(axis=2)
+				state_array = np.stack(states, axis=0)
+				state_points = state_array[:, :, 0]
 
 				# plot value func contours
 				if sim_result["instance"]["value_oracle"] is not None:
@@ -506,7 +539,7 @@ class Example8(Problem):
 						values.append(value)
 					values = np.array(values).squeeze(axis=2)
 
-					pcm = ax.tricontourf(states[:,robot_idxs[0]],states[:,robot_idxs[1]],values[:,robot])
+					pcm = ax.tricontourf(state_points[:,robot_idxs[0]],state_points[:,robot_idxs[1]],values[:,robot])
 					fig.colorbar(pcm,ax=ax)	
 
 				# plot policy function 
@@ -517,8 +550,7 @@ class Example8(Problem):
 						action = policy_oracle[robot].eval(self,state,robot)
 						actions.append(action)
 					actions = np.array(actions).squeeze(axis=2)
-
-					ax.quiver(states[:,robot_idxs[0]],states[:,robot_idxs[1]],actions[:,0],actions[:,1])
+					ax.quiver(state_points[:,robot_idxs[0]],state_points[:,robot_idxs[1]],actions[:,0],actions[:,1])
 					
 				# plot final trajectory , obstacles and limits 
 				self.render(fig=fig,ax=ax,states=sim_result["states"])

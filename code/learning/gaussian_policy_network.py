@@ -48,9 +48,15 @@ class GaussianPolicyNetwork(torch.nn.Module):
 		self.psi.to(device)
 		return super().to(device)
 
+	def sync_action_lims(self, problem):
+		self.action_lims = problem.action_lims
+		return self.action_lims
+
 
 	def forward(self,x,training=False):
-		x[:,8] = 0 # zero out the last element of the encoding, which is the time encoding, to make the policy time-invariant.
+		x = x.clone()
+		if x.shape[1] > 8:
+			x[:,8] = 0 # zero out the last element of the encoding, which is the time encoding, to make the policy time-invariant.
 		dist = self.psi(x)
 		mu, logvar = torch.split(dist, 2, dim=1)
 
@@ -75,14 +81,15 @@ class GaussianPolicyNetwork(torch.nn.Module):
 		# 		- for diagonal matrix, det(Var) = Var(0,0) * Var(1,1) * ... 
   
 		mu,logvar = self(x,training=True)
-		# loss = torch.sum((mu - target).pow(2) / (2*torch.exp(logvar)) + mu.shape[0]/2 * logvar)
-		loss = (mu - target).pow(2) # / (2*torch.exp(logvar)) + 1/2 * logvar)
+		scaled_mu = self.scale_action(mu)
+		# Compare in the same bounded action space used at inference time.
+		loss = (scaled_mu - target).pow(2) # / (2*torch.exp(logvar)) + 1/2 * logvar)
 		loss = torch.mean(loss)
 		return loss 
 
 	def eval(self,problem,root_state,robot):
 		super().eval()
-		self.action_lims = problem.action_lims
+		self.sync_action_lims(problem)
 		policy_encoding = problem.policy_encoding(root_state,robot)
 		policy_encoding = torch.tensor(policy_encoding,dtype=torch.float32).squeeze().unsqueeze(0) # [batch_size x state_dim]
 		policy = self(policy_encoding).detach().numpy().reshape(int(self.output_dim/2),1) # [action_dim_per_robot x 1]
