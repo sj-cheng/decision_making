@@ -9,7 +9,7 @@ from problems.problem import Problem
 from util import sample_vector, contains
 import plotter 
 
-# 2d single integrator pursuit evasion 1v1   
+# 2d pursuit-evasion with per-step relative goal commands and MINCO-style rollout
 class Example8(Problem):
 
 	def __init__(self): 
@@ -26,8 +26,18 @@ class Example8(Problem):
 		self.name = "example8"
 		self.position_idx = np.arange(2) 
 		self.state_control_weight = 1e-5 
+		# Each robot action is a per-step local command offset delta. The
+		# low-level controller converts the resulting command point into a
+		# smooth quintic trajectory and evaluates that trajectory at t = dt.
 		self.action_semantics = "relative_position_delta"
-		self.low_level_controller_name = "relative_displacement_to_velocity"
+		self.low_level_controller_name = "relative_goal_to_minco_rollout"
+		self.default_render_substeps = 10
+		self.detailed_render_substeps = 30
+		self.default_diagnostic_substeps = 50
+		self.detailed_diagnostic_substeps = 200
+		self.detailed_visualization_on = False
+		self.render_substeps = self.default_render_substeps
+		self.diagnostic_substeps = self.default_diagnostic_substeps
 		self.desired_distance = 1.0
 		self.init_min_dist = 2.0
 		self.evaders = [0, 1]
@@ -35,14 +45,30 @@ class Example8(Problem):
 		self.turn_groups = [np.array([0, 1]), np.array([2, 3])]
 		self.time_idx = 8
 		self.active_idxs = [9, 10, 11, 12]
+		self.evader_speed_lim_range = (1.0, 1.0)
+		self.pursuer_speed_lim_range = (1.0, 1.0)
 
-		self.state_dim = 13
+		self.evader_acc_lim =  self.evader_speed_lim_range[1] / self.dt
+		self.pursuer_acc_lim =  self.pursuer_speed_lim_range[1] / self.dt
+		self.state_dim = 29
 		self.action_dim = 8
 		self.state_idxs = [
 			np.array([0,1]),  # E1
 			np.array([2,3]),  # E2
 			np.array([4,5]),  # P1
 			np.array([6,7]),  # P2
+		]
+		self.vel_idxs = [
+			np.array([13,14]),  # E1 velocity
+			np.array([15,16]),  # E2 velocity
+			np.array([17,18]),  # P1 velocity
+			np.array([19,20]),  # P2 velocity
+		]
+		self.acc_idxs = [
+			np.array([21,22]),  # E1 acceleration
+			np.array([23,24]),  # E2 acceleration
+			np.array([25,26]),  # P1 acceleration
+			np.array([27,28]),  # P2 acceleration
 		]
 		self.action_idxs = [
 			np.array([0,1]),  # E1 action
@@ -69,14 +95,27 @@ class Example8(Problem):
 			(0,1),
 			(0,1),
 			(0,1),
+			(-self.evader_speed_lim_range[1], self.evader_speed_lim_range[1]),
+			(-self.evader_speed_lim_range[1], self.evader_speed_lim_range[1]),
+			(-self.evader_speed_lim_range[1], self.evader_speed_lim_range[1]),
+			(-self.evader_speed_lim_range[1], self.evader_speed_lim_range[1]),
+			(-self.pursuer_speed_lim_range[1], self.pursuer_speed_lim_range[1]),
+			(-self.pursuer_speed_lim_range[1], self.pursuer_speed_lim_range[1]),
+			(-self.pursuer_speed_lim_range[1], self.pursuer_speed_lim_range[1]),
+			(-self.pursuer_speed_lim_range[1], self.pursuer_speed_lim_range[1]),
+			(-self.evader_acc_lim, self.evader_acc_lim),
+			(-self.evader_acc_lim, self.evader_acc_lim),
+			(-self.evader_acc_lim, self.evader_acc_lim),
+			(-self.evader_acc_lim, self.evader_acc_lim),
+			(-self.pursuer_acc_lim, self.pursuer_acc_lim),
+			(-self.pursuer_acc_lim, self.pursuer_acc_lim),
+			(-self.pursuer_acc_lim, self.pursuer_acc_lim),
+			(-self.pursuer_acc_lim, self.pursuer_acc_lim),
 			))
 		self.approx_dist = (self.state_lims[0,1] - self.state_lims[0,0])/10 
 
-		self.evader_speed_lim_range = (1.4, 2.6)
-		self.pursuer_speed_lim_range = (1.4, 2.6)
 		self.current_evader_speed_lim = 1.0
 		self.current_pursuer_speed_lim = 1.0
-
 		self.update_action_lims()
 
 	def update_action_lims(self):
@@ -94,29 +133,10 @@ class Example8(Problem):
 			(-self.current_pursuer_speed_lim, self.current_pursuer_speed_lim),
 		))
 		self.action_lims = self.dt * self.control_lims
-
 	def randomize_speed_limits(self):
 		self.current_evader_speed_lim = np.random.uniform(*self.evader_speed_lim_range)
 		self.current_pursuer_speed_lim = np.random.uniform(*self.pursuer_speed_lim_range)
 		self.update_action_lims()
-		# self.action_lims = np.array((
-		# 	# (-0.0,0.0),
-		# 	# (-0.0,0.0),
-		# 	# (-0.0,0.0),
-		# 	# (-0.0,0.0),
-
-		# 	(-1.0,1.0),
-		# 	(-1.0,1.0),
-
-		# 	(-1.0,1.0),
-		# 	(-1.0,1.0),
-
-		# 	(-1.0,1.0),
-		# 	(-1.0,1.0),
-
-		# 	(-1.0,1.0),
-		# 	(-1.0,1.0),
-		# 	))
 
 		self.init_lims = np.array((
 			(-8,8), (-8,8),
@@ -125,6 +145,14 @@ class Example8(Problem):
 			(-8,8), (-8,8),
 			(0,0),
 			(1,1), (1,1), (1,1), (1,1),
+			(0,0), (0,0),
+			(0,0), (0,0),
+			(0,0), (0,0),
+			(0,0), (0,0),
+			(0,0), (0,0),
+			(0,0), (0,0),
+			(0,0), (0,0),
+			(0,0), (0,0),
 			))
 
 		self.Fc = np.array((
@@ -162,16 +190,151 @@ class Example8(Problem):
 			control_lims[:, 1].reshape((-1, 1)),
 		)
 
-	def action_to_velocity(self, action, robot, dt):
-		delta_position = action[self.action_idxs[robot], :]
-		dt = max(dt, 1e-8)
-		desired_velocity = delta_position / dt
-		return self.apply_velocity_limits(desired_velocity, robot)
+	def get_minco_horizon(self, dt):
+		return max(float(dt), 1e-8)
 
-	def propagate_robot_state(self, state, velocity, dt, robot):
-		Fd = np.eye(len(self.state_idxs[robot])) + dt * self.Fc
-		Bd = dt * self.Bc
-		return np.dot(Fd, state[self.state_idxs[robot], :]) + np.dot(Bd, velocity)
+	def get_robot_action_lims(self, robot):
+		return self.action_lims[self.action_idxs[robot], :]
+
+	def get_robot_velocity_lims(self, robot):
+		return self.get_robot_control_lims(robot)
+
+	def set_visualization_detail(self, detailed_on=False):
+		self.detailed_visualization_on = bool(detailed_on)
+		if self.detailed_visualization_on:
+			self.render_substeps = self.detailed_render_substeps
+			self.diagnostic_substeps = self.detailed_diagnostic_substeps
+		else:
+			self.render_substeps = self.default_render_substeps
+			self.diagnostic_substeps = self.default_diagnostic_substeps
+
+	def construct_beta(self, t, rank):
+		beta_t = np.zeros(6, dtype=float)
+		beta_coeff = np.zeros(6, dtype=float)
+		beta_t[rank] = 1.0
+		for i in range(rank + 1, 6):
+			beta_t[i] = beta_t[i - 1] * t
+		for i in range(rank, 6):
+			coeff = 1.0
+			for j in range(rank):
+				coeff *= (i - j)
+			beta_coeff[i] = coeff
+		return beta_t * beta_coeff
+
+	def construct_quintic_boundary_inverse(self, horizon):
+		rows = []
+		for t in (0.0, horizon):
+			for rank in range(3):
+				rows.append(self.construct_beta(t, rank))
+		return np.linalg.inv(np.vstack(rows))
+
+	def solve_quintic_coeffs(self, p0, v0, a0, pT, vT, aT, boundary_inv):
+		q = np.vstack((
+			p0.reshape((1, 2)),
+			v0.reshape((1, 2)),
+			a0.reshape((1, 2)),
+			pT.reshape((1, 2)),
+			vT.reshape((1, 2)),
+			aT.reshape((1, 2)),
+		))
+		return boundary_inv @ q
+
+	def compute_feasible_command(self, state, action, robot):
+		p0 = state[self.state_idxs[robot], :]
+		delta = action[self.action_idxs[robot], :]
+		p_cmd_raw = p0 + delta
+		action_lims = self.get_robot_action_lims(robot)
+		delta_clipped = np.clip(
+			delta,
+			action_lims[:, 0].reshape((-1, 1)),
+			action_lims[:, 1].reshape((-1, 1)),
+		)
+		p_cmd_bounded = p0 + delta_clipped
+		position_lims = self.state_lims[self.state_idxs[robot], :]
+		p_cmd_feasible = np.clip(
+			p_cmd_bounded,
+			position_lims[:, 0].reshape((-1, 1)),
+			position_lims[:, 1].reshape((-1, 1)),
+		)
+		return p_cmd_raw, p_cmd_feasible
+
+	def compute_terminal_velocity_ref(self, p0, p_cmd_feasible, robot, horizon):
+		velocity_lims = self.get_robot_velocity_lims(robot)
+		desired_velocity = (p_cmd_feasible - p0) / max(float(horizon), 1e-8)
+		return np.clip(
+			desired_velocity,
+			velocity_lims[:, 0].reshape((-1, 1)),
+			velocity_lims[:, 1].reshape((-1, 1)),
+		)
+
+	def rollout_quintic(self, coeffs, t):
+		pos = (coeffs.T @ self.construct_beta(t, 0)).reshape((2, 1))
+		vel = (coeffs.T @ self.construct_beta(t, 1)).reshape((2, 1))
+		acc = (coeffs.T @ self.construct_beta(t, 2)).reshape((2, 1))
+		return pos, vel, acc
+
+	def sample_render_trajectory(self, states, robot, substeps=None):
+		states = np.atleast_2d(np.asarray(states).squeeze())
+		if substeps is None:
+			substeps = self.render_substeps
+		if states.shape[0] == 0:
+			return {
+				"times": np.zeros((0,)),
+				"positions": np.zeros((0, 2)),
+				"velocities": np.zeros((0, 2)),
+				"accelerations": np.zeros((0, 2)),
+			}
+
+		times = [float(states[0, self.time_idx])]
+		positions = [states[0, self.state_idxs[robot]]]
+		velocities = [states[0, self.vel_idxs[robot]]]
+		accelerations = [states[0, self.acc_idxs[robot]]]
+
+		for step_idx in range(states.shape[0] - 1):
+			s0 = states[step_idx].reshape((-1, 1))
+			s1 = states[step_idx + 1].reshape((-1, 1))
+			horizon = max(float(s1[self.time_idx, 0] - s0[self.time_idx, 0]), 1e-8)
+			boundary_inv = self.construct_quintic_boundary_inverse(horizon)
+			coeffs = self.solve_quintic_coeffs(
+				s0[self.state_idxs[robot], :],
+				s0[self.vel_idxs[robot], :],
+				s0[self.acc_idxs[robot], :],
+				s1[self.state_idxs[robot], :],
+				s1[self.vel_idxs[robot], :],
+				s1[self.acc_idxs[robot], :],
+				boundary_inv,
+			)
+			sample_times = np.linspace(0.0, horizon, int(substeps) + 1)[1:]
+			for t in sample_times:
+				position, velocity, acceleration = self.rollout_quintic(coeffs, t)
+				times.append(float(s0[self.time_idx, 0] + t))
+				positions.append(position[:, 0])
+				velocities.append(velocity[:, 0])
+				accelerations.append(acceleration[:, 0])
+
+		return {
+			"times": np.asarray(times),
+			"positions": np.asarray(positions),
+			"velocities": np.asarray(velocities),
+			"accelerations": np.asarray(accelerations),
+		}
+
+	def sample_render_positions(self, states, robot):
+		return self.sample_render_trajectory(states, robot)["positions"]
+
+	def rollout_robot_state(self, state, action, robot, dt):
+		safe_dt = max(float(dt), 1e-8)
+		horizon = self.get_minco_horizon(safe_dt)
+		boundary_inv = self.construct_quintic_boundary_inverse(horizon)
+		p0 = state[self.state_idxs[robot], :]
+		v0 = state[self.vel_idxs[robot], :]
+		a0 = state[self.acc_idxs[robot], :]
+		p_cmd_raw, p_cmd_feasible = self.compute_feasible_command(state, action, robot)
+		vT_ref = self.compute_terminal_velocity_ref(p0, p_cmd_feasible, robot, horizon)
+		aT_ref = np.zeros((2, 1))
+		coeffs = self.solve_quintic_coeffs(p0, v0, a0, p_cmd_feasible, vT_ref, aT_ref, boundary_inv)
+		position, velocity, acceleration = self.rollout_quintic(coeffs, safe_dt)
+		return p_cmd_raw, p_cmd_feasible, position, velocity, acceleration
 
 	def active_evader_count(self, state):
 		return sum(self.is_active(state, e) for e in self.evaders)
@@ -223,6 +386,10 @@ class Example8(Problem):
 			state[self.time_idx, 0] = 0.0
 			for idx in self.active_idxs:
 				state[idx, 0] = 1.0
+			for vel_idxs in self.vel_idxs:
+				state[vel_idxs, 0] = 0.0
+			for acc_idxs in self.acc_idxs:
+				state[acc_idxs, 0] = 0.0
 			valid = not self.is_terminal(state) and (self.min_cross_team_dist(state) > 2*self.init_min_dist)
 		return state
 
@@ -247,67 +414,77 @@ class Example8(Problem):
 				reward[robot,0]= -1.0
 		return reward
 
-	def gt_action(self, state, robot):
-		e_pos = state[self.state_idxs[0], :]
-		p_pos = state[self.state_idxs[1], :]
+	# def gt_action(self, state, robot):
+	# 	if not self.is_active(state, robot):
+	# 		return np.zeros((2, 1))
 
-		if robot == 0:
-			direction = e_pos - p_pos
-		else:
-			direction = e_pos - p_pos
+	# 	if robot in self.evaders:
+	# 		opponents = self.pursuers
+	# 		direction_sign = -1.0
+	# 	else:
+	# 		opponents = self.evaders
+	# 		direction_sign = 1.0
 
-		norm = np.linalg.norm(direction)
-		if norm < 1e-8:
-			unit = np.zeros((2, 1))
-		else:
-			unit = direction / norm
+	# 	robot_pos = state[self.state_idxs[robot], :]
+	# 	best_direction = np.zeros((2, 1))
+	# 	best_dist = np.inf
+	# 	for other in opponents:
+	# 		if not self.is_active(state, other):
+	# 			continue
+	# 		offset = state[self.state_idxs[other], :] - robot_pos
+	# 		dist = np.linalg.norm(offset)
+	# 		if dist < best_dist:
+	# 			best_dist = dist
+	# 			best_direction = direction_sign * offset
 
-		robot_action_idxs = self.action_idxs[robot]
-		u_max = np.abs(self.action_lims[robot_action_idxs, 1]).reshape((-1, 1))
+	# 	norm = np.linalg.norm(best_direction)
+	# 	if norm < 1e-8:
+	# 		return np.zeros((2, 1))
 
-		if robot == 0:
-			action = unit * u_max
-		else:
-			action = unit * u_max
+	# 	unit = best_direction / norm
+	# 	action_lims = self.get_robot_action_lims(robot)
+	# 	max_delta = np.abs(action_lims[:, 1]).reshape((-1, 1))
+	# 	action = unit * max_delta
+	# 	return np.clip(
+	# 		action,
+	# 		action_lims[:, 0].reshape((-1, 1)),
+	# 		action_lims[:, 1].reshape((-1, 1)),
+	# 	)
 
-		action = np.clip(
-			action,
-			self.action_lims[robot_action_idxs, 0].reshape((-1, 1)),
-			self.action_lims[robot_action_idxs, 1].reshape((-1, 1)),
-		)
-		return action
+	# def gt_actions(self, state):
+	# 	actions = []
+	# 	for robot in range(self.num_robots):
+	# 		action = self.gt_action(state, robot)
+	# 		actions.append(action)
+	# 	return np.array(actions).reshape(-1, 1)
 
-	def gt_actions(self, state):
-		actions = []
-		for robot in range(self.num_robots):
-			action = self.gt_action(state, robot)
-			actions.append(action)
-		return np.array(actions).reshape(-1, 1)
+	# def gt_value(self, state, robot):
+	# 	# Heuristic only for dataset tooling. It is aligned with the current
+	# 	# MINCO action semantics at a high level, but it is not an exact rollout.
+	# 	t = float(state[self.time_idx, 0])
 
-	def gt_value(self, state, robot):
-		t = float(state[4, 0])
+	# 	if self.is_captured(state) or t >= self.tf:
+	# 		evader_value = min(t, self.tf) / self.tf
+	# 		pursuer_value = 1.0 - evader_value
+	# 		values = np.zeros((self.num_robots, 1))
+	# 		values[self.evaders, 0] = evader_value
+	# 		values[self.pursuers, 0] = pursuer_value
+	# 		return values[robot:robot+1, :]
 
-		if self.is_captured(state) or t >= self.tf:
-			evader_value = min(t, self.tf) / self.tf
-			pursuer_value = 1.0 - evader_value
-			values = np.array([[evader_value], [pursuer_value]])
-			return values[robot:robot+1, :]
+	# 	d = self.min_cross_team_dist(state)
+	# 	evader_speed_max = np.linalg.norm(self.get_robot_velocity_lims(self.evaders[0])[:, 1])
+	# 	pursuer_speed_max = np.linalg.norm(self.get_robot_velocity_lims(self.pursuers[0])[:, 1])
+	# 	closing_speed = max(evader_speed_max + pursuer_speed_max, 1e-8)
 
-		e_pos = state[self.state_idxs[0], :]
-		p_pos = state[self.state_idxs[1], :]
-		d = np.linalg.norm(e_pos - p_pos)
+	# 	t_to_capture = max((d - self.desired_distance) / closing_speed, 0.0)
+	# 	terminal_t = min(t + t_to_capture, self.tf)
 
-		evader_action_max = np.linalg.norm(self.action_lims[self.action_idxs[0], 1])
-		pursuer_action_max = np.linalg.norm(self.action_lims[self.action_idxs[1], 1])
-		closing_speed = max(evader_action_max + pursuer_action_max, 1e-8)
-
-		t_to_capture = max((d - self.desired_distance) / closing_speed, 0.0)
-		terminal_t = min(t + t_to_capture, self.tf)
-
-		evader_value = terminal_t / self.tf
-		pursuer_value = 1.0 - evader_value
-		values = np.array([[evader_value], [pursuer_value]])
-		return values[robot:robot+1, :]
+	# 	evader_value = terminal_t / self.tf
+	# 	pursuer_value = 1.0 - evader_value
+	# 	values = np.zeros((self.num_robots, 1))
+	# 	values[self.evaders, 0] = evader_value
+	# 	values[self.pursuers, 0] = pursuer_value
+	# 	return values[robot:robot+1, :]
 	
 	def is_captured(self, s):
 		return len(self.get_capture_pairs(s)) > 0
@@ -319,20 +496,28 @@ class Example8(Problem):
 			s_tp1[self.active_idxs[robot], 0] = s[self.active_idxs[robot], 0]
 			if not self.is_active(s, robot):
 				s_tp1[self.state_idxs[robot],:] = s[self.state_idxs[robot],:]
+				s_tp1[self.vel_idxs[robot],:] = 0.0
+				s_tp1[self.acc_idxs[robot],:] = 0.0
 				continue
 
-			velocity = self.action_to_velocity(a, robot, dt)
-			s_tp1[self.state_idxs[robot],:] = self.propagate_robot_state(s, velocity, dt, robot)
+			_, _, position, velocity, acceleration = self.rollout_robot_state(s, a, robot, dt)
+			s_tp1[self.state_idxs[robot],:] = position
+			s_tp1[self.vel_idxs[robot],:] = velocity
+			s_tp1[self.acc_idxs[robot],:] = acceleration
 		s_tp1[self.time_idx, 0] = s[self.time_idx, 0] + dt
 		for p, e in self.get_capture_pairs(s_tp1):
 			s_tp1[self.active_idxs[p], 0] = 0.0
 			s_tp1[self.active_idxs[e], 0] = 0.0
+			s_tp1[self.vel_idxs[p], :] = 0.0
+			s_tp1[self.vel_idxs[e], :] = 0.0
+			s_tp1[self.acc_idxs[p], :] = 0.0
+			s_tp1[self.acc_idxs[e], :] = 0.0
 		return s_tp1 
 
 	def render(self,states=None,fig=None,ax=None):
 		# states, np array in [nt x state_dim]
   
-		states = states.squeeze() if states is not None else None
+		states = np.atleast_2d(np.asarray(states).squeeze()) if states is not None else None
 		
 		if fig == None or ax == None:
 			fig,ax = plotter.make_fig()
@@ -342,8 +527,9 @@ class Example8(Problem):
 			colors = plotter.get_n_colors(self.num_robots)
 			for robot in range(self.num_robots):
 				robot_state_idxs = self.state_idxs[robot] 
+				render_positions = self.sample_render_positions(states, robot)
 
-				ax.plot(states[:,robot_state_idxs[0]], states[:,robot_state_idxs[1]], color=colors[robot])
+				ax.plot(render_positions[:,0], render_positions[:,1], color=colors[robot])
 				ax.plot(states[0,robot_state_idxs[0]], states[0,robot_state_idxs[1]], color=colors[robot],marker='o')
 				ax.plot(states[-1,robot_state_idxs[0]], states[-1,robot_state_idxs[1]], color=colors[robot],marker='s')
 				
@@ -373,13 +559,63 @@ class Example8(Problem):
 
 		return fig,ax 
 
+	def plot_run_diagnostics(self, sim_result):
+		states = np.atleast_2d(np.asarray(sim_result["states"]).squeeze())
+		if states.shape[0] == 0:
+			return
+
+		colors = plotter.get_n_colors(self.num_robots)
+		labels = ["Evader1", "Evader2", "Pursuer1", "Pursuer2"]
+
+		for robot in range(self.num_robots):
+			trajectory = self.sample_render_trajectory(states, robot, substeps=self.diagnostic_substeps)
+			sampled_times = trajectory["times"]
+			sampled_vel = trajectory["velocities"]
+			sampled_acc = trajectory["accelerations"]
+			vel_norm = np.linalg.norm(sampled_vel, axis=1)
+			acc_norm = np.linalg.norm(sampled_acc, axis=1)
+			state_times = states[:, self.time_idx]
+			state_vel = states[:, self.vel_idxs[robot]]
+			state_acc = states[:, self.acc_idxs[robot]]
+			state_vel_norm = np.linalg.norm(state_vel, axis=1)
+			state_acc_norm = np.linalg.norm(state_acc, axis=1)
+			vel_lims = self.state_lims[self.vel_idxs[robot], :]
+			acc_lims = self.state_lims[self.acc_idxs[robot], :]
+			vel_norm_lim = np.sqrt(np.sum(np.square(vel_lims[:, 1])))
+			acc_norm_lim = np.sqrt(np.sum(np.square(acc_lims[:, 1])))
+
+			series = [
+				("vx", sampled_vel[:, 0], state_vel[:, 0], (vel_lims[0, 0], vel_lims[0, 1])),
+				("vy", sampled_vel[:, 1], state_vel[:, 1], (vel_lims[1, 0], vel_lims[1, 1])),
+				("|v|", vel_norm, state_vel_norm, (0.0, vel_norm_lim)),
+				("ax", sampled_acc[:, 0], state_acc[:, 0], (acc_lims[0, 0], acc_lims[0, 1])),
+				("ay", sampled_acc[:, 1], state_acc[:, 1], (acc_lims[1, 0], acc_lims[1, 1])),
+				("|a|", acc_norm, state_acc_norm, (0.0, acc_norm_lim)),
+			]
+
+			for series_name, sampled_values, state_values, y_lims in series:
+				fig, ax = plt.subplots(figsize=(10, 4))
+				ax.plot(sampled_times, sampled_values, color=colors[robot], alpha=0.25, linewidth=1.0)
+				ax.scatter(sampled_times, sampled_values, color=colors[robot], s=10, alpha=0.85, label="MINCO internal samples")
+				ax.scatter(state_times, state_values, color="black", s=26, marker="x", linewidths=0.9, label="stored states")
+				ax.set_title("{} {} vs Time".format(labels[robot], series_name))
+				ax.set_xlabel("time [s]")
+				ax.set_ylabel(series_name)
+				ax.set_ylim(y_lims)
+				ax.grid(True, alpha=0.25)
+				ax.legend(loc="best")
+				fig.tight_layout()
+
 	def is_terminal(self,state):
 		# return not self.is_valid(state)
 		#return (not self.is_valid(state)) or self.is_captured(state) 
 		return ((not self.is_valid(state)) or self.active_evader_count(state) == 0 or self.active_pursuer_count(state) == 0) or state[self.time_idx, 0] >= self.tf
 
 	def is_valid(self,state):
-		return contains(state,self.state_lims)
+		for robot in range(self.num_robots):
+			if not contains(state[self.state_idxs[robot], :], self.state_lims[self.state_idxs[robot], :]):
+				return False
+		return True
 
 	def policy_encoding(self,state,robot):
 		return state

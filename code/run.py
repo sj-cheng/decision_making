@@ -19,6 +19,8 @@ def make_instance(param):
 	instance = dict() 
 
 	problem = get_problem(param.problem_name)
+	if hasattr(problem, "set_visualization_detail"):
+		problem.set_visualization_detail(param.detailed_visualization_on)
 	policy_oracle,value_oracle = get_oracles(problem,
 		value_oracle_name = param.value_oracle_name,
 		value_oracle_path = param.value_oracle_path,
@@ -137,6 +139,8 @@ if __name__ == '__main__':
 	if param.parallel_on:
 		pool = mp.Pool(mp.cpu_count() - 1)
 		params = [Param() for _ in range(param.num_trials)]
+		for worker_param in params:
+			worker_param.detailed_visualization_on = param.detailed_visualization_on
 		seeds = [np.random.randint(10000) for _ in range(param.num_trials)]
 		args = list(zip(
 			itertools.count(), 
@@ -163,7 +167,10 @@ if __name__ == '__main__':
 	print('plotting results...')
 	for sim_result in sim_results:
 		plotter.plot_sim_result(sim_result)
-		sim_result["instance"]["problem"].render(states=sim_result["states"])
+		problem = sim_result["instance"]["problem"]
+		problem.render(states=sim_result["states"])
+		if param.detailed_visualization_on and hasattr(problem, "plot_run_diagnostics"):
+			problem.plot_run_diagnostics(sim_result)
 		#if param.pretty_plot_on and hasattr(sim_result["instance"]["problem"], 'pretty_plot') :
 		#	sim_result["instance"]["problem"].pretty_plot(sim_result)
 

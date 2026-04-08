@@ -7,6 +7,8 @@
 #include <eigen3/Eigen/Dense>
 #include "problem.hpp"
 #include <algorithm>
+#include <cmath>
+#include <limits>
 #include <utility>
 
 class Example8 : public Problem { 
@@ -26,8 +28,132 @@ class Example8 : public Problem {
 		int m_action_dim_per_robot;
 		int m_time_idx = 8;
 		std::vector<int> m_active_idxs = {9, 10, 11, 12};
+		std::vector<std::vector<int>> m_vel_idxs = {{13, 14}, {15, 16}, {17, 18}, {19, 20}};
+		std::vector<std::vector<int>> m_acc_idxs = {{21, 22}, {23, 24}, {25, 26}, {27, 28}};
 		std::vector<int> m_evaders = {0, 1};
 		std::vector<int> m_pursuers = {2, 3};
+
+	private:
+		using Vec2f = Eigen::Matrix<float,2,1>;
+		using Vec6f = Eigen::Matrix<float,6,1>;
+		using Mat6f = Eigen::Matrix<float,6,6>;
+		using Mat6x2f = Eigen::Matrix<float,6,2>;
+
+		float get_minco_horizon(float timestep) const {
+			return std::max(timestep, 1e-8f);
+		}
+
+		std::pair<Vec2f, Vec2f> get_robot_action_bounds(int robot) const {
+			Vec2f lower;
+			Vec2f upper;
+			for (int ii = 0; ii < 2; ++ii) {
+				const int idx = m_action_idxs[robot][ii];
+				lower(ii) = m_action_lims(idx,0);
+				upper(ii) = m_action_lims(idx,1);
+			}
+			return {lower, upper};
+		}
+
+		std::pair<Vec2f, Vec2f> get_robot_velocity_bounds(int robot) const {
+			const float inv_dt = 1.0f / std::max(m_timestep, 1e-8f);
+			auto action_bounds = get_robot_action_bounds(robot);
+			return {action_bounds.first * inv_dt, action_bounds.second * inv_dt};
+		}
+
+		Vec6f construct_beta(float t, int rank) const {
+			Vec6f beta_t = Vec6f::Zero();
+			Vec6f beta_coeff = Vec6f::Zero();
+			beta_t(rank) = 1.0f;
+			for (int i = rank + 1; i < beta_t.size(); ++i) {
+				beta_t(i) = beta_t(i - 1) * t;
+			}
+			for (int i = rank; i < beta_coeff.size(); ++i) {
+				float coeff = 1.0f;
+				for (int j = 0; j < rank; ++j) {
+					coeff *= static_cast<float>(i - j);
+				}
+				beta_coeff(i) = coeff;
+			}
+			return beta_t.cwiseProduct(beta_coeff);
+		}
+
+		Mat6f construct_quintic_boundary_inverse(float horizon) const {
+			Mat6f mat;
+			int row = 0;
+			for (int endpoint = 0; endpoint < 2; ++endpoint) {
+				const float t = (endpoint == 0) ? 0.0f : horizon;
+				for (int rank = 0; rank < 3; ++rank) {
+					mat.row(row++) = construct_beta(t, rank).transpose();
+				}
+			}
+			return mat.inverse();
+		}
+
+		Mat6x2f solve_quintic_coeffs(
+			const Vec2f &p0,
+			const Vec2f &v0,
+			const Vec2f &a0,
+			const Vec2f &pT,
+			const Vec2f &vT,
+			const Vec2f &aT,
+			const Mat6f &boundary_inv) const
+		{
+			Mat6x2f q;
+			q.row(0) = p0.transpose();
+			q.row(1) = v0.transpose();
+			q.row(2) = a0.transpose();
+			q.row(3) = pT.transpose();
+			q.row(4) = vT.transpose();
+			q.row(5) = aT.transpose();
+			return boundary_inv * q;
+		}
+
+		std::pair<Vec2f, Vec2f> compute_feasible_command(
+			const Eigen::Matrix<float,-1,1> &state,
+			const Eigen::Matrix<float,-1,1> &action,
+			int robot) const
+		{
+			const Vec2f p0 = state.block(m_state_idxs[robot][0],0,2,1);
+			const Vec2f delta = action.block(m_action_idxs[robot][0],0,2,1);
+			const Vec2f p_cmd_raw = p0 + delta;
+			auto action_bounds = get_robot_action_bounds(robot);
+			const Vec2f delta_clipped = delta.cwiseMax(action_bounds.first).cwiseMin(action_bounds.second);
+			const Vec2f p_cmd_bounded = p0 + delta_clipped;
+			Vec2f position_lower;
+			Vec2f position_upper;
+			for (int ii = 0; ii < 2; ++ii) {
+				const int idx = m_state_idxs[robot][ii];
+				position_lower(ii) = m_state_lims(idx,0);
+				position_upper(ii) = m_state_lims(idx,1);
+			}
+			const Vec2f p_cmd_feasible = p_cmd_bounded.cwiseMax(position_lower).cwiseMin(position_upper);
+			return {p_cmd_raw, p_cmd_feasible};
+		}
+
+		Vec2f compute_terminal_velocity_ref(
+			const Vec2f &p0,
+			const Vec2f &p_cmd_feasible,
+			int robot,
+			float horizon) const
+		{
+			auto velocity_bounds = get_robot_velocity_bounds(robot);
+			const Vec2f desired_velocity = (p_cmd_feasible - p0) / std::max(horizon, 1e-8f);
+			return desired_velocity.cwiseMax(velocity_bounds.first).cwiseMin(velocity_bounds.second);
+		}
+
+		void evaluate_quintic(
+			const Mat6x2f &coeffs,
+			float t,
+			Vec2f &position,
+			Vec2f &velocity,
+			Vec2f &acceleration) const
+		{
+			position = coeffs.transpose() * construct_beta(t, 0);
+			velocity = coeffs.transpose() * construct_beta(t, 1);
+			acceleration = coeffs.transpose() * construct_beta(t, 2);
+		}
+
+	public:
 		void set_params(Problem_Settings & problem_settings) override 
 		{
             m_state_dim = problem_settings.state_dim;
@@ -127,29 +253,57 @@ class Example8 : public Problem {
 			Eigen::Matrix<float,-1,1> action,
 			float timestep) override
 		{
-			Eigen::Matrix<float,-1,1> next_state(m_state_dim,1); 
-			Eigen::Matrix<float,2,2> Fd = m_I + m_Fc * timestep;
-			Eigen::Matrix<float,2,2> Bd = m_Bc * timestep; 
+			Eigen::Matrix<float,-1,1> next_state = state;
+			const float safe_dt = std::max(timestep, 1e-8f);
+			const float horizon = get_minco_horizon(safe_dt);
+			const Mat6f boundary_inv = construct_quintic_boundary_inverse(horizon);
 
             // dynamics 
 			for (int ii = 0; ii < m_num_robots; ii++){
 				next_state(m_active_idxs[ii], 0) = state(m_active_idxs[ii], 0);
 				if (!is_active(state, ii)) {
-            	next_state.block(m_state_idxs[ii][0],0,m_state_idxs[ii].size(),1) =
-            	    state.block(m_state_idxs[ii][0],0,m_state_idxs[ii].size(),1);
-           		continue;
-			}
-				auto control = action.block(m_action_idxs[ii][0],0,m_action_idxs[ii].size(),1) / timestep;
-                next_state.block(m_state_idxs[ii][0],0,m_state_idxs[ii].size(),1) = 
-                    Fd * state.block(m_state_idxs[ii][0],0,m_state_idxs[ii].size(),1) + 
-                    Bd * control;
+					next_state.block(m_state_idxs[ii][0],0,m_state_idxs[ii].size(),1) =
+						state.block(m_state_idxs[ii][0],0,m_state_idxs[ii].size(),1);
+					next_state.block(m_vel_idxs[ii][0],0,m_vel_idxs[ii].size(),1).setZero();
+					next_state.block(m_acc_idxs[ii][0],0,m_acc_idxs[ii].size(),1).setZero();
+					continue;
+					}
+
+				const Vec2f p0 = state.block(m_state_idxs[ii][0],0,2,1);
+				const Vec2f v0 = state.block(m_vel_idxs[ii][0],0,2,1);
+				const Vec2f a0 = state.block(m_acc_idxs[ii][0],0,2,1);
+				const auto command_pair = compute_feasible_command(state, action, ii);
+				const Vec2f p_cmd_raw = command_pair.first;
+				const Vec2f p_cmd_feasible = command_pair.second;
+				(void)p_cmd_raw;
+				const Vec2f vT_ref = compute_terminal_velocity_ref(p0, p_cmd_feasible, ii, horizon);
+				const Vec2f aT_ref = Vec2f::Zero();
+				const Mat6x2f coeffs = solve_quintic_coeffs(
+					p0,
+					v0,
+					a0,
+					p_cmd_feasible,
+					vT_ref,
+					aT_ref,
+					boundary_inv);
+				Vec2f position;
+				Vec2f velocity;
+				Vec2f acceleration;
+				evaluate_quintic(coeffs, safe_dt, position, velocity, acceleration);
+				next_state.block(m_state_idxs[ii][0],0,2,1) = position;
+				next_state.block(m_vel_idxs[ii][0],0,2,1) = velocity;
+				next_state.block(m_acc_idxs[ii][0],0,2,1) = acceleration;
             }   
 
-            next_state(8,0) = state(8,0) + timestep;
+            next_state(m_time_idx,0) = state(m_time_idx,0) + timestep;
 			auto capture_pairs = get_capture_pairs(next_state);
 			for(auto &pe : capture_pairs) {
 				next_state(m_active_idxs[pe.first], 0) = 0.0f;
 				next_state(m_active_idxs[pe.second], 0) = 0.0f;
+				next_state.block(m_vel_idxs[pe.first][0],0,m_vel_idxs[pe.first].size(),1).setZero();
+				next_state.block(m_vel_idxs[pe.second][0],0,m_vel_idxs[pe.second].size(),1).setZero();
+				next_state.block(m_acc_idxs[pe.first][0],0,m_acc_idxs[pe.first].size(),1).setZero();
+				next_state.block(m_acc_idxs[pe.second][0],0,m_acc_idxs[pe.second].size(),1).setZero();
 			}
             return next_state;
 		}
@@ -199,7 +353,16 @@ class Example8 : public Problem {
 
         bool is_valid(Eigen::Matrix<float,-1,1> state) override
         {
-            return (state.array() >= m_state_lims.col(0).array()).all() && (state.array() <= m_state_lims.col(1).array()).all();
+            for (int j = 0; j < m_num_robots; ++j) {
+                int s0 = m_state_idxs[j][0];
+                int sd = static_cast<int>(m_state_idxs[j].size());
+                bool in_low  = (state.block(s0,0,sd,1).array() >= m_state_lims.block(s0,0,sd,1).array()).all();
+                bool in_high = (state.block(s0,0,sd,1).array() <= m_state_lims.block(s0,1,sd,1).array()).all();
+                if (!(in_low && in_high)) {
+                    return false;
+                }
+            }
+            return true;
         }
 
         bool is_terminal(Eigen::Matrix<float,-1,1> state) override 
