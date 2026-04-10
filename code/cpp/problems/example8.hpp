@@ -1,4 +1,3 @@
-
 #pragma once 
 
 #include <string>
@@ -8,8 +7,8 @@
 #include "problem.hpp"
 #include <algorithm>
 #include <cmath>
-#include <limits>
 #include <utility>
+#include <limits>
 
 class Example8 : public Problem { 
 	
@@ -39,6 +38,14 @@ class Example8 : public Problem {
 		using Mat6f = Eigen::Matrix<float,6,6>;
 		using Mat6x2f = Eigen::Matrix<float,6,2>;
 
+		struct Rollout_Data {
+			bool active = false;
+			Mat6x2f coeffs = Mat6x2f::Zero();
+			Vec2f position = Vec2f::Zero();
+			Vec2f velocity = Vec2f::Zero();
+			Vec2f acceleration = Vec2f::Zero();
+		};
+
 		float get_minco_horizon(float timestep) const {
 			return std::max(timestep, 1e-8f);
 		}
@@ -54,12 +61,41 @@ class Example8 : public Problem {
 			return {lower, upper};
 		}
 
+		std::pair<Vec2f, Vec2f> get_robot_position_bounds(int robot) const {
+			Vec2f lower;
+			Vec2f upper;
+			for (int ii = 0; ii < 2; ++ii) {
+				const int idx = m_state_idxs[robot][ii];
+				lower(ii) = m_state_lims(idx,0);
+				upper(ii) = m_state_lims(idx,1);
+			}
+			return {lower, upper};
+		}
+
 		std::pair<Vec2f, Vec2f> get_robot_velocity_bounds(int robot) const {
 			const float inv_dt = 1.0f / std::max(m_timestep, 1e-8f);
 			auto action_bounds = get_robot_action_bounds(robot);
 			return {action_bounds.first * inv_dt, action_bounds.second * inv_dt};
 		}
 
+		std::pair<Vec2f, Vec2f> get_robot_acceleration_bounds(int robot) const {
+			Vec2f lower;
+			Vec2f upper;
+			for (int ii = 0; ii < 2; ++ii) {
+				const int idx = m_acc_idxs[robot][ii];
+				lower(ii) = m_state_lims(idx,0);
+				upper(ii) = m_state_lims(idx,1);
+			}
+			return {lower, upper};
+		}
+
+		Vec2f get_symmetric_abs_bounds(const std::pair<Vec2f, Vec2f> &bounds) const {
+			Vec2f abs_bounds;
+			for (int ii = 0; ii < 2; ++ii) {
+				abs_bounds(ii) = std::min(-bounds.first(ii), bounds.second(ii));
+			}
+			return abs_bounds;
+		}
 		Vec6f construct_beta(float t, int rank) const {
 			Vec6f beta_t = Vec6f::Zero();
 			Vec6f beta_coeff = Vec6f::Zero();
@@ -77,16 +113,48 @@ class Example8 : public Problem {
 			return beta_t.cwiseProduct(beta_coeff);
 		}
 
-		Mat6f construct_quintic_boundary_inverse(float horizon) const {
-			Mat6f mat;
+		Mat6f construct_M(float horizon) const {
+			Mat6f M;
 			int row = 0;
 			for (int endpoint = 0; endpoint < 2; ++endpoint) {
 				const float t = (endpoint == 0) ? 0.0f : horizon;
 				for (int rank = 0; rank < 3; ++rank) {
-					mat.row(row++) = construct_beta(t, rank).transpose();
+					M.row(row++) = construct_beta(t, rank).transpose();
 				}
 			}
-			return mat.inverse();
+			return M;
+		}
+
+		Mat6f construct_quintic_boundary_inverse(float horizon) const {
+			return construct_M(horizon).inverse();
+		}
+
+		Mat6f betabetaT_int(float t, int rank) const {
+			const Vec6f beta = construct_beta(t, rank);
+			const Mat6f bbT = beta * beta.transpose();
+			Mat6f int_coeff = Mat6f::Zero();
+			for (int i = 0; i < 6; ++i) {
+				for (int j = 0; j < 6; ++j) {
+					const int denom = i + j - 2*rank + 1;
+					if (denom > 0) {
+						int_coeff(i, j) = 1.0f / static_cast<float>(denom);
+					}
+				}
+			}
+			return t * bbT.cwiseProduct(int_coeff);
+		}
+
+		Mat6f get_minco_matrix_inv(float horizon) const {
+			const Mat6f M = construct_M(horizon);
+			const Mat6f M_inv = M.inverse();
+			const Mat6f pJpC = betabetaT_int(horizon, 3);
+			Mat6f pQptQ = Mat6f::Zero();
+			pQptQ(5,5) = 1.0f;
+			const Mat6f pCpQ = M_inv.transpose();
+			const Mat6f pJptQ = pQptQ * pCpQ * pJpC;
+			Mat6f new_M = M;
+			new_M.row(5) = pJptQ.row(5);
+			return new_M.inverse();
 		}
 
 		Mat6x2f solve_quintic_coeffs(
@@ -108,6 +176,23 @@ class Example8 : public Problem {
 			return boundary_inv * q;
 		}
 
+		Mat6x2f solve_minco_coeffs(
+			const Vec2f &p0,
+			const Vec2f &v0,
+			const Vec2f &a0,
+			const Vec2f &pT,
+			const Vec2f &vT,
+			const Mat6f &minco_inv) const
+		{
+			Mat6x2f q = Mat6x2f::Zero();
+			q.row(0) = p0.transpose();
+			q.row(1) = v0.transpose();
+			q.row(2) = a0.transpose();
+			q.row(3) = pT.transpose();
+			q.row(4) = vT.transpose();
+			return minco_inv * q;
+		}
+
 		std::pair<Vec2f, Vec2f> compute_feasible_command(
 			const Eigen::Matrix<float,-1,1> &state,
 			const Eigen::Matrix<float,-1,1> &action,
@@ -116,17 +201,8 @@ class Example8 : public Problem {
 			const Vec2f p0 = state.block(m_state_idxs[robot][0],0,2,1);
 			const Vec2f delta = action.block(m_action_idxs[robot][0],0,2,1);
 			const Vec2f p_cmd_raw = p0 + delta;
-			auto action_bounds = get_robot_action_bounds(robot);
-			const Vec2f delta_clipped = delta.cwiseMax(action_bounds.first).cwiseMin(action_bounds.second);
-			const Vec2f p_cmd_bounded = p0 + delta_clipped;
-			Vec2f position_lower;
-			Vec2f position_upper;
-			for (int ii = 0; ii < 2; ++ii) {
-				const int idx = m_state_idxs[robot][ii];
-				position_lower(ii) = m_state_lims(idx,0);
-				position_upper(ii) = m_state_lims(idx,1);
-			}
-			const Vec2f p_cmd_feasible = p_cmd_bounded.cwiseMax(position_lower).cwiseMin(position_upper);
+			auto position_bounds = get_robot_position_bounds(robot);
+			const Vec2f p_cmd_feasible = p_cmd_raw.cwiseMax(position_bounds.first).cwiseMin(position_bounds.second);
 			return {p_cmd_raw, p_cmd_feasible};
 		}
 
@@ -140,6 +216,109 @@ class Example8 : public Problem {
 			const Vec2f desired_velocity = (p_cmd_feasible - p0) / std::max(horizon, 1e-8f);
 			return desired_velocity.cwiseMax(velocity_bounds.first).cwiseMin(velocity_bounds.second);
 		}
+		
+		std::pair<Vec2f, Vec2f> solve_end_pos_equ(
+			float horizon,
+			float t,
+			int rank,
+			const Eigen::Matrix<float,3,2> &q0,
+			const Vec2f &vT,
+			const Vec2f &max_abs,
+			const Mat6f &minco_inv) const
+		{
+			const Vec6f bound_coeff = minco_inv.transpose() * construct_beta(t, rank);
+			Mat6x2f q = Mat6x2f::Zero();
+			q.block<3,2>(0,0) = q0;
+			q.row(4) = vT.transpose();
+			const float posT_coeff = bound_coeff(3);
+			const Vec2f const_center = -(q.transpose() * bound_coeff);
+			const Vec2f const_val_max = const_center + max_abs;
+			const Vec2f const_val_min = const_center - max_abs;
+			Vec2f upper;
+			Vec2f lower;
+			const float eps = 1e-12f;
+			if (posT_coeff > eps) {
+				upper = const_val_max / posT_coeff;
+				lower = const_val_min / posT_coeff;
+			} else if (posT_coeff < -eps) {
+				upper = const_val_min / posT_coeff;
+				lower = const_val_max / posT_coeff;
+			} else {
+				upper = Vec2f::Constant(std::numeric_limits<float>::infinity());
+				lower = Vec2f::Constant(-std::numeric_limits<float>::infinity());
+			}
+			return {upper, lower};
+		}
+
+		std::pair<Vec2f, Vec2f> solve_end_pos_bound(
+			float horizon,
+			const Eigen::Matrix<float,3,2> &q0,
+			const Vec2f &vT,
+			int rank,
+			const Vec2f &max_abs,
+			const Mat6f &minco_inv,
+			int seg_count = 7) const
+		{
+			Vec2f upper = Vec2f::Constant(std::numeric_limits<float>::infinity());
+			Vec2f lower = Vec2f::Constant(-std::numeric_limits<float>::infinity());
+			const float den = horizon / (2.0f * static_cast<float>(seg_count));
+			for (int i = 0; i < seg_count; ++i) {
+				const float t = (2.0f * static_cast<float>(i) + 1.0f) * den;
+				auto pos_bound = solve_end_pos_equ(horizon, t, rank, q0, vT, max_abs, minco_inv);
+				upper = upper.cwiseMin(pos_bound.first);
+				lower = lower.cwiseMax(pos_bound.second);
+			}
+			if (rank == 2) {
+				auto pos_bound = solve_end_pos_equ(horizon, horizon, rank, q0, vT, max_abs, minco_inv);
+				upper = upper.cwiseMin(pos_bound.first);
+				lower = lower.cwiseMax(pos_bound.second);
+			}
+			return {upper, lower};
+		}
+
+		void project_terminal_command(
+			const Vec2f &p0,
+			const Vec2f &v0,
+			const Vec2f &a0,
+			const Vec2f &p_cmd_nominal,
+			int robot,
+			float horizon,
+			const Mat6f &minco_inv,
+			Vec2f &pT_cmd,
+			Vec2f &vT_cmd) const
+		{
+			const auto velocity_bounds = get_robot_velocity_bounds(robot);
+			const auto position_bounds = get_robot_position_bounds(robot);
+			const auto acceleration_bounds = get_robot_acceleration_bounds(robot);
+			const Vec2f vel_abs = get_symmetric_abs_bounds(velocity_bounds);
+			const Vec2f acc_abs = get_symmetric_abs_bounds(acceleration_bounds);
+			const Vec2f vT_nominal = compute_terminal_velocity_ref(p0, p_cmd_nominal, robot, horizon);
+			const Vec2f vT_base = (v0 + horizon * a0).cwiseMax(velocity_bounds.first).cwiseMin(velocity_bounds.second);
+			Eigen::Matrix<float,3,2> q0;
+			q0.row(0) = p0.transpose();
+			q0.row(1) = v0.transpose();
+			q0.row(2) = a0.transpose();
+			for (float alpha : {1.0f, 0.75f, 0.5f, 0.25f, 0.0f}) {
+				const Vec2f v_candidate = (vT_base + alpha * (vT_nominal - vT_base))
+					.cwiseMax(velocity_bounds.first)
+					.cwiseMin(velocity_bounds.second);
+				auto vel_pos_bounds = solve_end_pos_bound(horizon, q0, v_candidate, 1, vel_abs, minco_inv);
+				auto acc_pos_bounds = solve_end_pos_bound(horizon, q0, v_candidate, 2, acc_abs, minco_inv);
+				const Vec2f feasible_lower = vel_pos_bounds.second
+					.cwiseMax(acc_pos_bounds.second)
+					.cwiseMax(position_bounds.first);
+				const Vec2f feasible_upper = vel_pos_bounds.first
+					.cwiseMin(acc_pos_bounds.first)
+					.cwiseMin(position_bounds.second);
+				if ((feasible_lower.array() <= feasible_upper.array() + 1e-6f).all()) {
+					pT_cmd = p_cmd_nominal.cwiseMax(feasible_lower).cwiseMin(feasible_upper);
+					vT_cmd = v_candidate;
+					return;
+				}
+			}
+			pT_cmd = p0.cwiseMax(position_bounds.first).cwiseMin(position_bounds.second);
+			vT_cmd = v0.cwiseMax(velocity_bounds.first).cwiseMin(velocity_bounds.second);
+		}
 
 		void evaluate_quintic(
 			const Mat6x2f &coeffs,
@@ -151,6 +330,32 @@ class Example8 : public Problem {
 			position = coeffs.transpose() * construct_beta(t, 0);
 			velocity = coeffs.transpose() * construct_beta(t, 1);
 			acceleration = coeffs.transpose() * construct_beta(t, 2);
+		}
+
+		Rollout_Data rollout_robot_state(
+			const Eigen::Matrix<float,-1,1> &state,
+			const Eigen::Matrix<float,-1,1> &action,
+			int robot,
+			float dt) const
+		{
+			Rollout_Data rollout;
+			rollout.active = true;
+			const float safe_dt = std::max(dt, 1e-8f);
+			const float horizon = get_minco_horizon(safe_dt);
+			const Vec2f p0 = state.block(m_state_idxs[robot][0],0,2,1);
+			const Vec2f v0 = state.block(m_vel_idxs[robot][0],0,2,1);
+			const Vec2f a0 = state.block(m_acc_idxs[robot][0],0,2,1);
+			const auto command_pair = compute_feasible_command(state, action, robot);
+			const Vec2f p_cmd_nominal = command_pair.second;
+			const Mat6f minco_inv = get_minco_matrix_inv(horizon);
+			Vec2f pT_cmd;
+			Vec2f vT_cmd;
+			project_terminal_command(
+				p0, v0, a0, p_cmd_nominal, robot, horizon, minco_inv, pT_cmd, vT_cmd);
+			rollout.coeffs = solve_minco_coeffs(
+				p0, v0, a0, pT_cmd, vT_cmd, minco_inv);
+			evaluate_quintic(rollout.coeffs, safe_dt, rollout.position, rollout.velocity, rollout.acceleration);
+			return rollout;
 		}
 
 	public:
@@ -255,9 +460,6 @@ class Example8 : public Problem {
 		{
 			Eigen::Matrix<float,-1,1> next_state = state;
 			const float safe_dt = std::max(timestep, 1e-8f);
-			const float horizon = get_minco_horizon(safe_dt);
-			const Mat6f boundary_inv = construct_quintic_boundary_inverse(horizon);
-
             // dynamics 
 			for (int ii = 0; ii < m_num_robots; ii++){
 				next_state(m_active_idxs[ii], 0) = state(m_active_idxs[ii], 0);
@@ -269,30 +471,10 @@ class Example8 : public Problem {
 					continue;
 					}
 
-				const Vec2f p0 = state.block(m_state_idxs[ii][0],0,2,1);
-				const Vec2f v0 = state.block(m_vel_idxs[ii][0],0,2,1);
-				const Vec2f a0 = state.block(m_acc_idxs[ii][0],0,2,1);
-				const auto command_pair = compute_feasible_command(state, action, ii);
-				const Vec2f p_cmd_raw = command_pair.first;
-				const Vec2f p_cmd_feasible = command_pair.second;
-				(void)p_cmd_raw;
-				const Vec2f vT_ref = compute_terminal_velocity_ref(p0, p_cmd_feasible, ii, horizon);
-				const Vec2f aT_ref = Vec2f::Zero();
-				const Mat6x2f coeffs = solve_quintic_coeffs(
-					p0,
-					v0,
-					a0,
-					p_cmd_feasible,
-					vT_ref,
-					aT_ref,
-					boundary_inv);
-				Vec2f position;
-				Vec2f velocity;
-				Vec2f acceleration;
-				evaluate_quintic(coeffs, safe_dt, position, velocity, acceleration);
-				next_state.block(m_state_idxs[ii][0],0,2,1) = position;
-				next_state.block(m_vel_idxs[ii][0],0,2,1) = velocity;
-				next_state.block(m_acc_idxs[ii][0],0,2,1) = acceleration;
+				const Rollout_Data rollout = rollout_robot_state(state, action, ii, safe_dt);
+				next_state.block(m_state_idxs[ii][0],0,2,1) = rollout.position;
+				next_state.block(m_vel_idxs[ii][0],0,2,1) = rollout.velocity;
+				next_state.block(m_acc_idxs[ii][0],0,2,1) = rollout.acceleration;
             }   
 
             next_state(m_time_idx,0) = state(m_time_idx,0) + timestep;

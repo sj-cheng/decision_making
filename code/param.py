@@ -6,8 +6,8 @@ class Param:
 	def __init__(self):
 
 		# 
-		self.parallel_on = False
-		self.num_trials = 100 
+		self.parallel_on = True
+		self.num_trials = 10 
 
 		# names 
 		self.problem_name = "example8" # e.g. example1, example2, example3, ...
@@ -17,11 +17,9 @@ class Param:
 
 		# oracles 
 		oracles_on =True
-		dirname = "../current/models"
-		#dirname = "/home/sjc/NTE/decision_making/current/models"
-		#dirname = "/home/ben/projects/decision_making/saved/example9"
-		# dirname = "/home/ben/projects/decision_making/saved/example6"
-
+		#dirname = "../current/models"
+		dirname = "/home/sjc/decision_making/current/historymodels/11_MINCO_pva_quintic"
+		
 		n = 4 # num robots 
 		l =39 # learning iteration 
 		if oracles_on:
@@ -32,7 +30,7 @@ class Param:
 			self.value_oracle_path = None 
 
 		# settings
-		self.movie_on =True	
+		self.movie_on =False	
 		self.pretty_plot_on = True
 		# Toggle dense MINCO diagnostic pages in run.pdf.
 		self.detailed_visualization_on = True
