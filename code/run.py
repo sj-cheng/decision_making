@@ -19,6 +19,8 @@ def make_instance(param):
 	instance = dict() 
 
 	problem = get_problem(param.problem_name)
+	if hasattr(problem, "use_minco_rollout"):
+		problem.use_minco_rollout = param.use_minco_rollout
 	if hasattr(problem, "set_visualization_detail"):
 		problem.set_visualization_detail(param.detailed_visualization_on)
 	policy_oracle,value_oracle = get_oracles(problem,
@@ -79,7 +81,10 @@ def run_instance(rank,queue,total,instance,verbose=False,tqdm_on=True):
 	if tqdm_on:	pbar = init_tqdm(rank,total)
 
 	states.append(curr_state)
-	times.append(problem.times[0])
+	if hasattr(problem, "time_idx"):
+		times.append(float(curr_state[problem.time_idx, 0]))
+	else:
+		times.append(problem.times[0])
 	for step,time in enumerate(problem.times[1:]):
 
 		if verbose and not tqdm_on: print('\t\t t = {}/{}'.format(step,len(problem.times)))
@@ -95,7 +100,10 @@ def run_instance(rank,queue,total,instance,verbose=False,tqdm_on=True):
 		next_state = problem.step(curr_state,action,dt)
 		done = problem.is_terminal(next_state)
 
-		times.append(time)
+		if hasattr(problem, "time_idx"):
+			times.append(float(next_state[problem.time_idx, 0]))
+		else:
+			times.append(time)
 		states.append(next_state)
 		actions.append(action)
 		rewards.append(reward)
@@ -158,7 +166,7 @@ if __name__ == '__main__':
 	if param.movie_on: 
 		print('making movie...')
 		plotter.make_movie(sim_results[0],sim_results[0]["instance"],"../current/plots/vid.gif")
-		plotter.open_figs("../current/plots/vid.gif")	
+		plotter.open_figs("../current/plots/vid.gif")
 
 	# save/load results
 	# todo

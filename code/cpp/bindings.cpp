@@ -52,6 +52,7 @@ PYBIND11_MODULE(bindings, m) {
         .def_readwrite("c1", &Problem_Settings::c1)
         .def_readwrite("c2", &Problem_Settings::c2)
         .def_readwrite("R", &Problem_Settings::R)
+        .def_readwrite("use_minco_rollout", &Problem_Settings::use_minco_rollout)
         .def_readwrite("gamma", &Problem_Settings::gamma);
 
     pybind11::class_<Solver_Wrapper> (m, "Solver_Wrapper")

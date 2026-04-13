@@ -26,6 +26,7 @@ class Problem_Settings
         float c1; 
         float c2; 
         float R; 
+        bool use_minco_rollout = true;
         Eigen::Matrix<float,-1,2> state_lims;
         Eigen::Matrix<float,-1,2> action_lims;
         Eigen::Matrix<float,-1,2> init_lims;

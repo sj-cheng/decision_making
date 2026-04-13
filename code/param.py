@@ -6,34 +6,32 @@ class Param:
 	def __init__(self):
 
 		# 
-		self.parallel_on = True
-		self.num_trials = 10 
-
+		self.parallel_on =False
+		self.num_trials = 100
+		# settings
+		self.movie_on =True
+		self.pretty_plot_on = True
+		self.detailed_visualization_on =True
 		# names 
 		self.problem_name = "example8" # e.g. example1, example2, example3, ...
+		self.use_minco_rollout = True
 		self.solver_name = "C_PUCT_V1" # e.g. Empty, DARE, PUCT_V0, C_PUCT_V0, PUCT_V1, ...
-		self.value_oracle_name = "deterministic" # ["deterministic","gaussian"]
-		self.policy_oracle_name = "gaussian" # ["deterministic","gaussian"]
+		self.value_oracle_name = "deterministic" 
+		self.policy_oracle_name = "gaussian" 
 
 		# oracles 
 		oracles_on =True
-		#dirname = "../current/models"
-		dirname = "/home/sjc/decision_making/current/historymodels/11_MINCO_pva_quintic"
+		dirname = "../current/models"
+		#dirname = "/home/sjc/decision_making/current/historymodels/11_MINCO_pva_quintic"
 		
 		n = 4 # num robots 
-		l =39 # learning iteration 
+		l =30 # learning iteration
 		if oracles_on:
 			self.policy_oracle_paths = ["{}/model_policy_l{}_i{}.pt".format(dirname,l,i) for i in range(n)]	
 			self.value_oracle_path = "{}/model_value_l{}.pt".format(dirname,l)
 		else:	
 			self.policy_oracle_paths = [None]  
 			self.value_oracle_path = None 
-
-		# settings
-		self.movie_on =False	
-		self.pretty_plot_on = True
-		# Toggle dense MINCO diagnostic pages in run.pdf.
-		self.detailed_visualization_on = True
 
 		# solver settings 
 		self.number_simulations = 1000

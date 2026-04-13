@@ -31,6 +31,7 @@ class Example8(Problem):
 		# smooth quintic trajectory and evaluates that trajectory at t = dt.
 		self.action_semantics = "relative_position_delta"
 		self.low_level_controller_name = "relative_goal_to_minco_rollout"
+		self.use_minco_rollout = True
 		self.default_render_substeps = 10
 		self.detailed_render_substeps = 30
 		self.default_diagnostic_substeps = 50
@@ -45,11 +46,11 @@ class Example8(Problem):
 		self.turn_groups = [np.array([0, 1]), np.array([2, 3])]
 		self.time_idx = 8
 		self.active_idxs = [9, 10, 11, 12]
-		self.evader_speed_lim_range = (1.4, 2.6)
-		self.pursuer_speed_lim_range = (1.4, 2.6)
+		self.evader_speed_lim_range = (2.0, 2.0)
+		self.pursuer_speed_lim_range = (2.0, 2.0)
 
-		self.evader_acc_lim =  self.evader_speed_lim_range[1] / self.dt
-		self.pursuer_acc_lim =  self.pursuer_speed_lim_range[1] / self.dt
+		self.evader_acc_lim =  3.0
+		self.pursuer_acc_lim =  3.0
 		self.state_dim = 29
 		self.action_dim = 8
 		self.state_idxs = [
@@ -260,7 +261,7 @@ class Example8(Problem):
 		vT_base = np.clip(v0 + horizon * a0, vel_lower, vel_upper)
 		if minco_inv is None:
 			minco_inv = self.get_minco_matrix_inv(horizon)
-		for alpha in (1.0, 0.75, 0.5, 0.25, 0.0):
+		for alpha in (1.0,0.9,0.8,0.7, 0.6, 0.5, 0.4,0.3, 0.2, 0.1, 0.0):
 			vT_candidate = np.clip(
 				vT_base + alpha * (vT_nominal - vT_base),
 				vel_lower,
@@ -406,6 +407,19 @@ class Example8(Problem):
 			s0 = states[step_idx].reshape((-1, 1))
 			s1 = states[step_idx + 1].reshape((-1, 1))
 			horizon = max(float(s1[self.time_idx, 0] - s0[self.time_idx, 0]), 1e-8)
+			sample_times = np.linspace(0.0, horizon, int(substeps) + 1)[1:]
+			if not self.use_minco_rollout:
+				position0 = s0[self.state_idxs[robot], :]
+				velocity = (s1[self.state_idxs[robot], :] - position0) / horizon
+				acceleration = np.zeros((2, 1), dtype=float)
+				for t in sample_times:
+					position = position0 + t * velocity
+					times.append(float(s0[self.time_idx, 0] + t))
+					positions.append(position[:, 0])
+					velocities.append(velocity[:, 0])
+					accelerations.append(acceleration[:, 0])
+				continue
+
 			boundary_inv = self.construct_quintic_boundary_inverse(horizon)
 			coeffs = self.solve_quintic_coeffs(
 				s0[self.state_idxs[robot], :],
@@ -416,7 +430,6 @@ class Example8(Problem):
 				s1[self.acc_idxs[robot], :],
 				boundary_inv,
 			)
-			sample_times = np.linspace(0.0, horizon, int(substeps) + 1)[1:]
 			for t in sample_times:
 				position, velocity, acceleration = self.rollout_quintic(coeffs, t)
 				times.append(float(s0[self.time_idx, 0] + t))
@@ -435,6 +448,27 @@ class Example8(Problem):
 		return self.sample_render_trajectory(states, robot)["positions"]
 
 	def rollout_robot_state(self, state, action, robot, dt):
+		if not self.use_minco_rollout:
+			safe_dt = max(float(dt), 1e-8)
+			p0 = state[self.state_idxs[robot], :]
+			v0 = state[self.vel_idxs[robot], :]
+			delta = action[self.action_idxs[robot], :]
+			p_cmd_raw = p0 + delta
+			velocity_lims = self.get_robot_velocity_lims(robot)
+			acc_lims = self.get_robot_acceleration_lims(robot)
+			velocity = np.clip(
+				delta / safe_dt,
+				velocity_lims[:, 0].reshape((-1, 1)),
+				velocity_lims[:, 1].reshape((-1, 1)),
+			)
+			position = p0 + safe_dt * velocity
+			acceleration = np.clip(
+				(velocity - v0) / safe_dt,
+				acc_lims[:, 0].reshape((-1, 1)),
+				acc_lims[:, 1].reshape((-1, 1)),
+			)
+			return p_cmd_raw, p_cmd_raw, position, velocity, acceleration
+
 		safe_dt = max(float(dt), 1e-8)
 		horizon = self.get_minco_horizon(safe_dt)
 		p0 = state[self.state_idxs[robot], :]
@@ -448,6 +482,60 @@ class Example8(Problem):
 			p0, v0, a0, pT_cmd, vT_cmd, minco_inv)
 		position, velocity, acceleration = self.rollout_quintic(coeffs, safe_dt)
 		return p_cmd_raw, pT_cmd, position, velocity, acceleration
+
+	def evaluate_rollout_segment(self, state, action, robot, t_eval, dt_total):
+		safe_dt = max(float(dt_total), 1e-8)
+		t = float(np.clip(t_eval, 0.0, safe_dt))
+		p0 = state[self.state_idxs[robot], :]
+		v0 = state[self.vel_idxs[robot], :]
+
+		if not self.is_active(state, robot):
+			return np.array(p0, copy=True), np.zeros((2, 1)), np.zeros((2, 1))
+
+		if not self.use_minco_rollout:
+			delta = action[self.action_idxs[robot], :]
+			velocity_lims = self.get_robot_velocity_lims(robot)
+			acc_lims = self.get_robot_acceleration_lims(robot)
+			velocity = np.clip(
+				delta / safe_dt,
+				velocity_lims[:, 0].reshape((-1, 1)),
+				velocity_lims[:, 1].reshape((-1, 1)),
+			)
+			position = p0 + t * velocity
+			acceleration = np.clip(
+				(velocity - v0) / safe_dt,
+				acc_lims[:, 0].reshape((-1, 1)),
+				acc_lims[:, 1].reshape((-1, 1)),
+			)
+			return position, velocity, acceleration
+
+		a0 = state[self.acc_idxs[robot], :]
+		_, p_cmd_nominal = self.compute_feasible_command(state, action, robot)
+		minco_inv = self.get_minco_matrix_inv(safe_dt)
+		pT_cmd, vT_cmd = self.project_terminal_command(
+			p0, v0, a0, p_cmd_nominal, robot, safe_dt, minco_inv)
+		coeffs = self.solve_minco_coeffs(
+			p0, v0, a0, pT_cmd, vT_cmd, minco_inv)
+		return self.rollout_quintic(coeffs, t)
+
+	def interpolate_state(self, state, action, t_eval, dt_total):
+		safe_dt = max(float(dt_total), 1e-8)
+		t = float(np.clip(t_eval, 0.0, safe_dt))
+		state_t = np.array(state, copy=True)
+		state_t[self.time_idx, 0] = state[self.time_idx, 0] + t
+		for robot in range(self.num_robots):
+			state_t[self.active_idxs[robot], 0] = state[self.active_idxs[robot], 0]
+			if not self.is_active(state, robot):
+				state_t[self.state_idxs[robot], :] = state[self.state_idxs[robot], :]
+				state_t[self.vel_idxs[robot], :] = 0.0
+				state_t[self.acc_idxs[robot], :] = 0.0
+				continue
+			position, velocity, acceleration = self.evaluate_rollout_segment(
+				state, action, robot, t, safe_dt)
+			state_t[self.state_idxs[robot], :] = position
+			state_t[self.vel_idxs[robot], :] = velocity
+			state_t[self.acc_idxs[robot], :] = acceleration
+		return state_t
 
 	def active_evader_count(self, state):
 		return sum(self.is_active(state, e) for e in self.evaders)
@@ -634,11 +722,12 @@ class Example8(Problem):
 				("ay", sampled_acc[:, 1], state_acc[:, 1], (acc_lims[1, 0], acc_lims[1, 1])),
 				("|a|", acc_norm, state_acc_norm, (0.0, acc_norm_lim)),
 			]
+			sample_label = "MINCO internal samples" if self.use_minco_rollout else "direct interpolation samples"
 
 			for series_name, sampled_values, state_values, y_lims in series:
 				fig, ax = plt.subplots(figsize=(10, 4))
 				ax.plot(sampled_times, sampled_values, color=colors[robot], alpha=0.25, linewidth=1.0)
-				ax.scatter(sampled_times, sampled_values, color=colors[robot], s=10, alpha=0.85, label="MINCO internal samples")
+				ax.scatter(sampled_times, sampled_values, color=colors[robot], s=10, alpha=0.85, label=sample_label)
 				ax.scatter(state_times, state_values, color="black", s=26, marker="x", linewidths=0.9, label="stored states")
 				ax.set_title("{} {} vs Time".format(labels[robot], series_name))
 				ax.set_xlabel("time [s]")

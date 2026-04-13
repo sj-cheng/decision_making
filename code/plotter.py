@@ -364,10 +364,19 @@ def make_movie(sim_result,instance,filename):
 
 	from matplotlib import animation
 
-	states = sim_result["states"]
-	times = sim_result["times"] 
+	problem = instance["problem"]
+	states = np.asarray(sim_result["states"])
+	if states.ndim == 3 and states.shape[-1] == 1:
+		states = states.reshape(states.shape[0], states.shape[1])
+	actions = np.asarray(sim_result["actions"])
+	if actions.ndim == 3 and actions.shape[-1] == 1:
+		actions = actions.reshape(actions.shape[0], actions.shape[1])
+	if hasattr(problem, "time_idx"):
+		times = states[:, int(problem.time_idx)].astype(float)
+	else:
+		times = np.asarray(sim_result["times"]).ravel()
 
-	if instance["problem"].name in ["example3","example4"]:
+	if problem.name in ["example3","example4"]:
 		fig,ax = make_3d_fig()
 	else:
 		fig,ax = make_fig()
@@ -376,18 +385,58 @@ def make_movie(sim_result,instance,filename):
 		ax.clear()
 		ax.grid(True)
 
-	# animate over trajectory
+	ln = ax.plot([],[],[])
+	target_fps = 30
+	total_time = times[-1] - times[0]
+	num_frames = int(total_time * target_fps) + 1
+	new_times = np.linspace(times[0], times[-1], num_frames)
+
+	def frame_state_history(frame_time):
+		if frame_time <= times[0] + 1e-12:
+			return states[:1]
+		if frame_time >= times[-1] - 1e-12:
+			return states
+
+		idx = int(np.searchsorted(times, frame_time, side='right') - 1)
+		idx = max(0, min(idx, len(times) - 2))
+		t0 = float(times[idx])
+		t1 = float(times[idx + 1])
+		dt = max(t1 - t0, 1e-8)
+		local_t = float(frame_time - t0)
+		history = states[:idx + 1]
+
+		if local_t <= 1e-12 or idx >= len(actions):
+			return history
+
+		state0 = states[idx].reshape((-1, 1))
+		action0 = actions[idx].reshape((-1, 1))
+		if hasattr(problem, "interpolate_state"):
+			state_t = problem.interpolate_state(state0, action0, local_t, dt)
+		else:
+			alpha = local_t / dt
+			state1 = states[idx + 1].reshape((-1, 1))
+			state_t = (1.0 - alpha) * state0 + alpha * state1
+		return np.vstack((history, state_t.reshape((1, -1))))
+
 	def animate(i_t):
 		init()
-		#print(i_t/len(times))
-		time_idxs = range(i_t) #times[0:i_t]
-		states_i = states[time_idxs]
-		if i_t < 2:
-			return ln 
+		frame_time = float(new_times[i_t])
+		states_i = frame_state_history(frame_time)
+		if states_i.shape[0] < 2:
+			if hasattr(ax, "text2D"):
+				ax.text2D(0.02, 0.98, f"t = {frame_time:.2f}s", transform=ax.transAxes, va='top')
+			else:
+				ax.text(0.02, 0.98, f"t = {frame_time:.2f}s", transform=ax.transAxes, va='top')
+			return ln
 		else:
-			instance["problem"].render(states=states_i,fig=fig,ax=ax)
-		return ln 
+			problem.render(states=states_i,fig=fig,ax=ax)
+			if hasattr(ax, "text2D"):
+				ax.text2D(0.02, 0.98, f"t = {frame_time:.2f}s", transform=ax.transAxes, va='top')
+			else:
+				ax.text(0.02, 0.98, f"t = {frame_time:.2f}s", transform=ax.transAxes, va='top')
+		return ln
 
-	ln = ax.plot([],[],[])
-	anim = animation.FuncAnimation(fig, animate, frames=len(times)+1, interval=1)
-	anim.save(filename, fps=10, dpi=120)
+	interval = 1000.0 / target_fps
+	anim = animation.FuncAnimation(fig, animate, frames=num_frames, interval=interval)
+	anim.save(filename, fps=target_fps, dpi=120)
+	plt.close(fig)

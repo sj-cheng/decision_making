@@ -25,6 +25,7 @@ class Example8 : public Problem {
 		float m_tf;
 		int m_state_dim_per_robot; 
 		int m_action_dim_per_robot;
+		bool m_use_minco_rollout = true;
 		int m_time_idx = 8;
 		std::vector<int> m_active_idxs = {9, 10, 11, 12};
 		std::vector<std::vector<int>> m_vel_idxs = {{13, 14}, {15, 16}, {17, 18}, {19, 20}};
@@ -341,12 +342,26 @@ class Example8 : public Problem {
 			Rollout_Data rollout;
 			rollout.active = true;
 			const float safe_dt = std::max(dt, 1e-8f);
-			const float horizon = get_minco_horizon(safe_dt);
 			const Vec2f p0 = state.block(m_state_idxs[robot][0],0,2,1);
 			const Vec2f v0 = state.block(m_vel_idxs[robot][0],0,2,1);
-			const Vec2f a0 = state.block(m_acc_idxs[robot][0],0,2,1);
+			if (!m_use_minco_rollout) {
+				const Vec2f delta = action.block(m_action_idxs[robot][0],0,2,1);
+				const auto velocity_bounds = get_robot_velocity_bounds(robot);
+				const auto acceleration_bounds = get_robot_acceleration_bounds(robot);
+				rollout.velocity = (delta / safe_dt)
+					.cwiseMax(velocity_bounds.first)
+					.cwiseMin(velocity_bounds.second);
+				rollout.position = p0 + safe_dt * rollout.velocity;
+				rollout.acceleration = ((rollout.velocity - v0) / safe_dt)
+					.cwiseMax(acceleration_bounds.first)
+					.cwiseMin(acceleration_bounds.second);
+				return rollout;
+			}
+
 			const auto command_pair = compute_feasible_command(state, action, robot);
 			const Vec2f p_cmd_nominal = command_pair.second;
+			const float horizon = get_minco_horizon(safe_dt);
+			const Vec2f a0 = state.block(m_acc_idxs[robot][0],0,2,1);
 			const Mat6f minco_inv = get_minco_matrix_inv(horizon);
 			Vec2f pT_cmd;
 			Vec2f vT_cmd;
@@ -381,6 +396,7 @@ class Example8 : public Problem {
 			m_action_lims = problem_settings.action_lims; 
 			m_init_lims = problem_settings.init_lims;
 			m_dist = problem_settings.desired_distance;
+			m_use_minco_rollout = problem_settings.use_minco_rollout;
 
 			std::uniform_real_distribution<double> dist(0,1.0f); 
 

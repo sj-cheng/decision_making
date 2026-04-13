@@ -36,6 +36,7 @@ parallel_on = True
 solver_name = "C_PUCT_V1"
 # solver_name = "PUCT_V1"
 problem_name = "example8"
+use_minco_rollout = False
 policy_oracle_name = "gaussian"
 value_oracle_name = "deterministic"
 
@@ -631,6 +632,8 @@ def self_play(problem,policy_oracle,value_oracle,l):
 if __name__ == '__main__':
 
 	problem = get_problem(problem_name) 
+	if hasattr(problem, "use_minco_rollout"):
+		problem.use_minco_rollout = use_minco_rollout
 	format_dir(clean_dirnames=["data","models"]) 
 
 	num_D_pi_samples = num_D_pi
