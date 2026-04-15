@@ -21,8 +21,8 @@ class Param:
 
 		# oracles 
 		oracles_on =True
-		dirname = "../current/models"
-		#dirname = "/home/sjc/decision_making/current/historymodels/11_MINCO_pva_quintic"
+		#dirname = "../current/models"
+		dirname = "/home/sjc/decision_making/current/historymodels/12_MINCO_pva_minco_quintic"
 		
 		n = 4 # num robots 
 		l =30 # learning iteration

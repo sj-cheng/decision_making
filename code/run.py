@@ -116,7 +116,12 @@ def run_instance(rank,queue,total,instance,verbose=False,tqdm_on=True):
 			curr_state = next_state
 
 	if verbose:	print('completed sim.')
-	if verbose: problem.render(states=np.array(states))
+	if verbose:
+		plotter.render_problem(
+			problem,
+			states=np.array(states),
+			actions=np.array(actions),
+		)
 
 	sim_result = dict()
 	sim_result["instance"] = instance
@@ -176,7 +181,11 @@ if __name__ == '__main__':
 	for sim_result in sim_results:
 		plotter.plot_sim_result(sim_result)
 		problem = sim_result["instance"]["problem"]
-		problem.render(states=sim_result["states"])
+		plotter.render_problem(
+			problem,
+			states=sim_result["states"],
+			actions=sim_result["actions"],
+		)
 		if param.detailed_visualization_on and hasattr(problem, "plot_run_diagnostics"):
 			problem.plot_run_diagnostics(sim_result)
 		#if param.pretty_plot_on and hasattr(sim_result["instance"]["problem"], 'pretty_plot') :

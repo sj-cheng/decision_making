@@ -447,6 +447,86 @@ class Example8(Problem):
 	def sample_render_positions(self, states, robot):
 		return self.sample_render_trajectory(states, robot)["positions"]
 
+	def normalize_render_actions(self, actions):
+		if actions is None:
+			return None
+		actions = np.asarray(actions)
+		if actions.size == 0:
+			return np.zeros((0, self.action_dim), dtype=float)
+		if actions.ndim == 3 and actions.shape[-1] == 1:
+			return actions.reshape((actions.shape[0], actions.shape[1]))
+		actions = np.squeeze(actions)
+		if actions.ndim == 1:
+			return actions.reshape((1, -1))
+		return actions
+
+	def get_rollout_target_point(self, state, action, robot, dt=None):
+		state = np.asarray(state).reshape((-1, 1))
+		action = np.asarray(action).reshape((-1, 1))
+		if not self.is_active(state, robot):
+			return None
+		if dt is None:
+			dt = self.dt
+		safe_dt = max(float(dt), 1e-8)
+		if not self.use_minco_rollout:
+			_, p_cmd_feasible = self.compute_feasible_command(state, action, robot)
+			return p_cmd_feasible
+		horizon = self.get_minco_horizon(safe_dt)
+		p0 = state[self.state_idxs[robot], :]
+		v0 = state[self.vel_idxs[robot], :]
+		a0 = state[self.acc_idxs[robot], :]
+		_, p_cmd_feasible = self.compute_feasible_command(state, action, robot)
+		minco_inv = self.get_minco_matrix_inv(horizon)
+		pT_cmd, _ = self.project_terminal_command(
+			p0, v0, a0, p_cmd_feasible, robot, horizon, minco_inv)
+		return pT_cmd
+
+	def get_render_target_segments(self, states, actions=None):
+		states = np.atleast_2d(np.asarray(states).squeeze())
+		actions = self.normalize_render_actions(actions)
+		segment_data = []
+		if states.size == 0 or states.shape[0] == 0:
+			for _ in range(self.num_robots):
+				segment_data.append({
+					"starts": np.zeros((0, 2), dtype=float),
+					"targets": np.zeros((0, 2), dtype=float),
+				})
+			return segment_data
+
+		if actions is None:
+			segment_count = max(states.shape[0] - 1, 0)
+			for robot in range(self.num_robots):
+				starts = []
+				targets = []
+				for seg_idx in range(segment_count):
+					base_state = states[seg_idx].reshape((-1, 1))
+					if not self.is_active(base_state, robot):
+						continue
+					starts.append(base_state[self.state_idxs[robot], 0])
+					targets.append(np.array(states[seg_idx + 1, self.state_idxs[robot]], copy=True))
+				segment_data.append({
+					"starts": np.asarray(starts, dtype=float).reshape((-1, 2)) if starts else np.zeros((0, 2), dtype=float),
+					"targets": np.asarray(targets, dtype=float).reshape((-1, 2)) if targets else np.zeros((0, 2), dtype=float),
+				})
+			return segment_data
+
+		segment_count = min(actions.shape[0], states.shape[0])
+		for robot in range(self.num_robots):
+			starts = []
+			targets = []
+			for seg_idx in range(segment_count):
+				base_state = states[seg_idx].reshape((-1, 1))
+				target_point = self.get_rollout_target_point(base_state, actions[seg_idx], robot, dt=self.dt)
+				if target_point is None:
+					continue
+				starts.append(base_state[self.state_idxs[robot], 0])
+				targets.append(target_point[:, 0])
+			segment_data.append({
+				"starts": np.asarray(starts, dtype=float).reshape((-1, 2)) if starts else np.zeros((0, 2), dtype=float),
+				"targets": np.asarray(targets, dtype=float).reshape((-1, 2)) if targets else np.zeros((0, 2), dtype=float),
+			})
+		return segment_data
+
 	def rollout_robot_state(self, state, action, robot, dt):
 		if not self.use_minco_rollout:
 			safe_dt = max(float(dt), 1e-8)
@@ -644,7 +724,7 @@ class Example8(Problem):
 			s_tp1[self.acc_idxs[e], :] = 0.0
 		return s_tp1 
 
-	def render(self,states=None,fig=None,ax=None):
+	def render(self,states=None,actions=None,fig=None,ax=None):
 		# states, np array in [nt x state_dim]
   
 		states = np.atleast_2d(np.asarray(states).squeeze()) if states is not None else None
@@ -655,15 +735,34 @@ class Example8(Problem):
 		if states is not None:
 
 			colors = plotter.get_n_colors(self.num_robots)
+			target_segments = self.get_render_target_segments(states, actions=actions)
+			show_target_legend = False
 			for robot in range(self.num_robots):
 				robot_state_idxs = self.state_idxs[robot] 
 				render_positions = self.sample_render_positions(states, robot)
+				discrete_positions = states[:, robot_state_idxs]
+				segment_starts = target_segments[robot]["starts"]
+				segment_targets = target_segments[robot]["targets"]
 
 				ax.plot(render_positions[:,0], render_positions[:,1], color=colors[robot])
+				ax.scatter(discrete_positions[:,0], discrete_positions[:,1], color=colors[robot], s=16, alpha=0.35)
+				if segment_targets.shape[0] > 0:
+					show_target_legend = True
+					ax.scatter(
+						segment_targets[:,0],
+						segment_targets[:,1],
+						marker='o',
+						s=20,
+						facecolors='white',
+						edgecolors=colors[robot],
+						linewidths=1.0,
+						alpha=0.9,
+						zorder=4,
+					)
 				ax.plot(states[0,robot_state_idxs[0]], states[0,robot_state_idxs[1]], color=colors[robot],marker='o')
 				ax.plot(states[-1,robot_state_idxs[0]], states[-1,robot_state_idxs[1]], color=colors[robot],marker='s')
-				
-			# ax.set_aspect(lims[0,1]-lims[0,0] / lims[1,1]-lims[1,0])
+					
+				# ax.set_aspect(lims[0,1]-lims[0,0] / lims[1,1]-lims[1,0])
 
 				if robot in [0, 1]:
 					circ = patches.Circle((states[-1,robot_state_idxs[0]], states[-1,robot_state_idxs[1]]), \
@@ -680,6 +779,17 @@ class Example8(Problem):
 				elif robot == 3:
 					label = "Pursuer2"
 				ax.plot(np.nan,np.nan,color=colors[robot],label=label)
+			if show_target_legend:
+				ax.plot(
+					np.nan,
+					np.nan,
+					marker='o',
+					markerfacecolor='white',
+					markeredgecolor='k',
+					linestyle='None',
+					label='solver pT',
+				)
+				ax.plot(np.nan, np.nan, color='k', marker='o', linestyle='None', alpha=0.35, label='stored state')
 			ax.legend(loc='best')
 
 		lims = self.state_lims

@@ -1,5 +1,6 @@
 
 
+import inspect
 import numpy as np 
 import os, subprocess
 import math
@@ -63,6 +64,24 @@ def make_3d_fig():
 	fig = plt.figure()
 	ax = fig.add_subplot(111, projection='3d')
 	return fig,ax 
+
+
+def render_problem(problem, states=None, actions=None, fig=None, ax=None):
+	render_kwargs = {}
+	if states is not None:
+		render_kwargs["states"] = states
+	if actions is not None:
+		try:
+			render_sig = inspect.signature(problem.render)
+		except (TypeError, ValueError):
+			render_sig = None
+		if render_sig is None or "actions" in render_sig.parameters:
+			render_kwargs["actions"] = actions
+	if fig is not None:
+		render_kwargs["fig"] = fig
+	if ax is not None:
+		render_kwargs["ax"] = ax
+	return problem.render(**render_kwargs)
 
 
 def get_n_colors(n,cmap=None):
@@ -146,7 +165,7 @@ def plot_tree_state(problem,tree_state,zoom_on=True):
 
 		ln_coll = matplotlib.collections.LineCollection(segments, linewidth=0.2, colors='k', alpha=0.2)
 		ax.add_collection(ln_coll)
-		problem.render(fig=fig,ax=ax)
+		render_problem(problem, fig=fig, ax=ax)
 
 
 	elif len(problem.position_idx) == 2: 
@@ -176,7 +195,7 @@ def plot_tree_state(problem,tree_state,zoom_on=True):
 			ax.set_xlim((lims[0,0],lims[0,1]))
 			ax.set_ylim((lims[1,0],lims[1,1]))
 			
-		problem.render(fig=fig,ax=ax)
+		render_problem(problem, fig=fig, ax=ax)
 
 
 	elif len(problem.position_idx) == 3: 
@@ -205,7 +224,7 @@ def plot_tree_state(problem,tree_state,zoom_on=True):
 		ax.set_ylim((lims[1,0],lims[1,1]))
 		ax.set_zlim((lims[2,0],lims[2,1]))
 		ax.set_box_aspect((lims[0,1]-lims[0,0], lims[1,1]-lims[1,0], lims[2,1]-lims[2,0]))  
-		problem.render(fig=fig,ax=ax)
+		render_problem(problem, fig=fig, ax=ax)
 
 	else: 
 		print('tree plot dimension not supported')
@@ -293,7 +312,11 @@ def plot_regression_test(results,render_on=True):
 	# render each sim result 
 	if render_on:
 		for (param, sim_result) in results:
-			fig,ax = sim_result["instance"]["problem"].render(states=sim_result["states"])
+			fig,ax = render_problem(
+				sim_result["instance"]["problem"],
+				states=sim_result["states"],
+				actions=sim_result.get("actions"),
+			)
 			fig.suptitle(param.key)
 	else:
 		param, sim_result = results[0]
@@ -391,11 +414,11 @@ def make_movie(sim_result,instance,filename):
 	num_frames = int(total_time * target_fps) + 1
 	new_times = np.linspace(times[0], times[-1], num_frames)
 
-	def frame_state_history(frame_time):
+	def frame_render_history(frame_time):
 		if frame_time <= times[0] + 1e-12:
-			return states[:1]
+			return states[:1], actions[:1]
 		if frame_time >= times[-1] - 1e-12:
-			return states
+			return states, actions
 
 		idx = int(np.searchsorted(times, frame_time, side='right') - 1)
 		idx = max(0, min(idx, len(times) - 2))
@@ -404,9 +427,10 @@ def make_movie(sim_result,instance,filename):
 		dt = max(t1 - t0, 1e-8)
 		local_t = float(frame_time - t0)
 		history = states[:idx + 1]
+		action_history = actions[:min(idx + 1, len(actions))]
 
 		if local_t <= 1e-12 or idx >= len(actions):
-			return history
+			return history, action_history
 
 		state0 = states[idx].reshape((-1, 1))
 		action0 = actions[idx].reshape((-1, 1))
@@ -416,24 +440,17 @@ def make_movie(sim_result,instance,filename):
 			alpha = local_t / dt
 			state1 = states[idx + 1].reshape((-1, 1))
 			state_t = (1.0 - alpha) * state0 + alpha * state1
-		return np.vstack((history, state_t.reshape((1, -1))))
+		return np.vstack((history, state_t.reshape((1, -1)))), action_history
 
 	def animate(i_t):
 		init()
 		frame_time = float(new_times[i_t])
-		states_i = frame_state_history(frame_time)
-		if states_i.shape[0] < 2:
-			if hasattr(ax, "text2D"):
-				ax.text2D(0.02, 0.98, f"t = {frame_time:.2f}s", transform=ax.transAxes, va='top')
-			else:
-				ax.text(0.02, 0.98, f"t = {frame_time:.2f}s", transform=ax.transAxes, va='top')
-			return ln
+		states_i, actions_i = frame_render_history(frame_time)
+		render_problem(problem, states=states_i, actions=actions_i, fig=fig, ax=ax)
+		if hasattr(ax, "text2D"):
+			ax.text2D(0.02, 0.98, f"t = {frame_time:.2f}s", transform=ax.transAxes, va='top')
 		else:
-			problem.render(states=states_i,fig=fig,ax=ax)
-			if hasattr(ax, "text2D"):
-				ax.text2D(0.02, 0.98, f"t = {frame_time:.2f}s", transform=ax.transAxes, va='top')
-			else:
-				ax.text(0.02, 0.98, f"t = {frame_time:.2f}s", transform=ax.transAxes, va='top')
+			ax.text(0.02, 0.98, f"t = {frame_time:.2f}s", transform=ax.transAxes, va='top')
 		return ln
 
 	interval = 1000.0 / target_fps
