@@ -97,6 +97,24 @@ class Example8 : public Problem {
 			}
 			return abs_bounds;
 		}
+
+		float project_scalar_to_bounds(float nominal, float lower, float upper, float eps = 1e-6f) const {
+			const bool lower_finite = std::isfinite(lower);
+			const bool upper_finite = std::isfinite(upper);
+			if (lower_finite && upper_finite) {
+				if (lower <= upper + eps) {
+					return std::max(lower, std::min(nominal, upper));
+				}
+				return (std::fabs(nominal - lower) <= std::fabs(nominal - upper)) ? lower : upper;
+			}
+			if (lower_finite) {
+				return lower;
+			}
+			if (upper_finite) {
+				return upper;
+			}
+			return nominal;
+		}
 		Vec6f construct_beta(float t, int rank) const {
 			Vec6f beta_t = Vec6f::Zero();
 			Vec6f beta_coeff = Vec6f::Zero();
@@ -202,20 +220,22 @@ class Example8 : public Problem {
 			const Vec2f p0 = state.block(m_state_idxs[robot][0],0,2,1);
 			const Vec2f delta = action.block(m_action_idxs[robot][0],0,2,1);
 			const Vec2f p_cmd_raw = p0 + delta;
-			auto position_bounds = get_robot_position_bounds(robot);
-			const Vec2f p_cmd_feasible = p_cmd_raw.cwiseMax(position_bounds.first).cwiseMin(position_bounds.second);
-			return {p_cmd_raw, p_cmd_feasible};
+			return {p_cmd_raw, p_cmd_raw};
 		}
 
-		Vec2f compute_terminal_velocity_ref(
+		Vec2f compute_terminal_velocity(
 			const Vec2f &p0,
-			const Vec2f &p_cmd_feasible,
+			const Vec2f &v0,
+			const Vec2f &a0,
+			const Vec2f &p_cmd,
 			int robot,
 			float horizon) const
 		{
-			auto velocity_bounds = get_robot_velocity_bounds(robot);
-			const Vec2f desired_velocity = (p_cmd_feasible - p0) / std::max(horizon, 1e-8f);
-			return desired_velocity.cwiseMax(velocity_bounds.first).cwiseMin(velocity_bounds.second);
+			const float T = std::max(horizon, 1e-8f);
+			const Vec2f vT_nom =
+				(15.0f * (p_cmd - p0) - 7.0f * T * v0 - (T * T) * a0) / (8.0f * T);
+			const auto velocity_bounds = get_robot_velocity_bounds(robot);
+			return vT_nom.cwiseMax(velocity_bounds.first).cwiseMin(velocity_bounds.second);
 		}
 		
 		std::pair<Vec2f, Vec2f> solve_end_pos_equ(
@@ -258,7 +278,7 @@ class Example8 : public Problem {
 			int rank,
 			const Vec2f &max_abs,
 			const Mat6f &minco_inv,
-			int seg_count = 7) const
+			int seg_count = 5) const
 		{
 			Vec2f upper = Vec2f::Constant(std::numeric_limits<float>::infinity());
 			Vec2f lower = Vec2f::Constant(-std::numeric_limits<float>::infinity());
@@ -266,11 +286,6 @@ class Example8 : public Problem {
 			for (int i = 0; i < seg_count; ++i) {
 				const float t = (2.0f * static_cast<float>(i) + 1.0f) * den;
 				auto pos_bound = solve_end_pos_equ(horizon, t, rank, q0, vT, max_abs, minco_inv);
-				upper = upper.cwiseMin(pos_bound.first);
-				lower = lower.cwiseMax(pos_bound.second);
-			}
-			if (rank == 2) {
-				auto pos_bound = solve_end_pos_equ(horizon, horizon, rank, q0, vT, max_abs, minco_inv);
 				upper = upper.cwiseMin(pos_bound.first);
 				lower = lower.cwiseMax(pos_bound.second);
 			}
@@ -282,43 +297,26 @@ class Example8 : public Problem {
 			const Vec2f &v0,
 			const Vec2f &a0,
 			const Vec2f &p_cmd_nominal,
+			const Vec2f &vT,
 			int robot,
 			float horizon,
 			const Mat6f &minco_inv,
-			Vec2f &pT_cmd,
-			Vec2f &vT_cmd) const
+			Vec2f &pT_cmd) const
 		{
 			const auto velocity_bounds = get_robot_velocity_bounds(robot);
-			const auto position_bounds = get_robot_position_bounds(robot);
-			const auto acceleration_bounds = get_robot_acceleration_bounds(robot);
 			const Vec2f vel_abs = get_symmetric_abs_bounds(velocity_bounds);
-			const Vec2f acc_abs = get_symmetric_abs_bounds(acceleration_bounds);
-			const Vec2f vT_nominal = compute_terminal_velocity_ref(p0, p_cmd_nominal, robot, horizon);
-			const Vec2f vT_base = (v0 + horizon * a0).cwiseMax(velocity_bounds.first).cwiseMin(velocity_bounds.second);
 			Eigen::Matrix<float,3,2> q0;
 			q0.row(0) = p0.transpose();
 			q0.row(1) = v0.transpose();
 			q0.row(2) = a0.transpose();
-			for (float alpha : {1.0f, 0.75f, 0.5f, 0.25f, 0.0f}) {
-				const Vec2f v_candidate = (vT_base + alpha * (vT_nominal - vT_base))
-					.cwiseMax(velocity_bounds.first)
-					.cwiseMin(velocity_bounds.second);
-				auto vel_pos_bounds = solve_end_pos_bound(horizon, q0, v_candidate, 1, vel_abs, minco_inv);
-				auto acc_pos_bounds = solve_end_pos_bound(horizon, q0, v_candidate, 2, acc_abs, minco_inv);
-				const Vec2f feasible_lower = vel_pos_bounds.second
-					.cwiseMax(acc_pos_bounds.second)
-					.cwiseMax(position_bounds.first);
-				const Vec2f feasible_upper = vel_pos_bounds.first
-					.cwiseMin(acc_pos_bounds.first)
-					.cwiseMin(position_bounds.second);
-				if ((feasible_lower.array() <= feasible_upper.array() + 1e-6f).all()) {
-					pT_cmd = p_cmd_nominal.cwiseMax(feasible_lower).cwiseMin(feasible_upper);
-					vT_cmd = v_candidate;
-					return;
-				}
+			auto vel_pos_bounds = solve_end_pos_bound(horizon, q0, vT, 1, vel_abs, minco_inv);
+			pT_cmd = p_cmd_nominal;
+			for (int ii = 0; ii < 2; ++ii) {
+				pT_cmd(ii) = project_scalar_to_bounds(
+					p_cmd_nominal(ii),
+					vel_pos_bounds.second(ii),
+					vel_pos_bounds.first(ii));
 			}
-			pT_cmd = p0.cwiseMax(position_bounds.first).cwiseMin(position_bounds.second);
-			vT_cmd = v0.cwiseMax(velocity_bounds.first).cwiseMin(velocity_bounds.second);
 		}
 
 		void evaluate_quintic(
@@ -362,11 +360,11 @@ class Example8 : public Problem {
 			const Vec2f p_cmd_nominal = command_pair.second;
 			const float horizon = get_minco_horizon(safe_dt);
 			const Vec2f a0 = state.block(m_acc_idxs[robot][0],0,2,1);
+			const Vec2f vT_cmd = compute_terminal_velocity(p0, v0, a0, p_cmd_nominal, robot, horizon);
 			const Mat6f minco_inv = get_minco_matrix_inv(horizon);
 			Vec2f pT_cmd;
-			Vec2f vT_cmd;
 			project_terminal_command(
-				p0, v0, a0, p_cmd_nominal, robot, horizon, minco_inv, pT_cmd, vT_cmd);
+				p0, v0, a0, p_cmd_nominal, vT_cmd, robot, horizon, minco_inv, pT_cmd);
 			rollout.coeffs = solve_minco_coeffs(
 				p0, v0, a0, pT_cmd, vT_cmd, minco_inv);
 			evaluate_quintic(rollout.coeffs, safe_dt, rollout.position, rollout.velocity, rollout.acceleration);

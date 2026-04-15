@@ -206,6 +206,21 @@ class Example8(Problem):
 	def get_symmetric_abs_lims(self, lims):
 		return np.minimum(-lims[:, 0], lims[:, 1]).reshape((-1, 1))
 
+	def project_scalar_to_bounds(self, nominal, lower, upper, eps=1e-8):
+		lower_finite = np.isfinite(lower)
+		upper_finite = np.isfinite(upper)
+		if lower_finite and upper_finite:
+			if lower <= upper + eps:
+				return float(np.clip(nominal, lower, upper))
+			if abs(nominal - lower) <= abs(nominal - upper):
+				return float(lower)
+			return float(upper)
+		if lower_finite:
+			return float(lower)
+		if upper_finite:
+			return float(upper)
+		return float(nominal)
+
 	def solve_end_pos_equ(self, horizon, t, rank, q0, vT, max_abs, minco_inv):
 		bound_coeff = (self.construct_beta(t, rank).reshape((1, 6)) @ minco_inv).reshape((6,))
 		q = np.vstack((q0, np.zeros((3, 2), dtype=float)))
@@ -226,7 +241,7 @@ class Example8(Problem):
 			lower = np.full((2, 1), -np.inf)
 		return upper, lower
 
-	def solve_end_pos_bound(self, horizon, q0, vT, rank, max_abs, minco_inv, seg_count=7):
+	def solve_end_pos_bound(self, horizon, q0, vT, rank, max_abs, minco_inv, seg_count=5):
 		upper = np.full((2, 1), np.inf)
 		lower = np.full((2, 1), -np.inf)
 		den = horizon / (2.0 * float(seg_count))
@@ -236,49 +251,27 @@ class Example8(Problem):
 				horizon, t, rank, q0, vT, max_abs, minco_inv)
 			upper = np.minimum(upper, pos_upper)
 			lower = np.maximum(lower, pos_lower)
-		if rank == 2:
-			pos_upper, pos_lower = self.solve_end_pos_equ(
-				horizon, horizon, rank, q0, vT, max_abs, minco_inv)
-			upper = np.minimum(upper, pos_upper)
-			lower = np.maximum(lower, pos_lower)
 		return upper, lower
 
-	def project_terminal_command(self, p0, v0, a0, p_cmd_nominal, robot, horizon, minco_inv=None):
+	def project_terminal_command(self, p0, v0, a0, p_cmd_nominal, vT, robot, horizon, minco_inv=None):
 		q0 = np.vstack((
 			p0.reshape((1, 2)),
 			v0.reshape((1, 2)),
 			a0.reshape((1, 2)),
 		))
-		velocity_lims = self.get_robot_velocity_lims(robot)
-		vel_lower = velocity_lims[:, 0].reshape((-1, 1))
-		vel_upper = velocity_lims[:, 1].reshape((-1, 1))
-		position_lims = self.state_lims[self.state_idxs[robot], :]
-		pos_lower = position_lims[:, 0].reshape((-1, 1))
-		pos_upper = position_lims[:, 1].reshape((-1, 1))
-		vel_abs = self.get_symmetric_abs_lims(velocity_lims)
-		acc_abs = self.get_symmetric_abs_lims(self.get_robot_acceleration_lims(robot))
-		vT_nominal = self.compute_terminal_velocity_ref(p0, p_cmd_nominal, robot, horizon)
-		vT_base = np.clip(v0 + horizon * a0, vel_lower, vel_upper)
 		if minco_inv is None:
 			minco_inv = self.get_minco_matrix_inv(horizon)
-		for alpha in (1.0,0.9,0.8,0.7, 0.6, 0.5, 0.4,0.3, 0.2, 0.1, 0.0):
-			vT_candidate = np.clip(
-				vT_base + alpha * (vT_nominal - vT_base),
-				vel_lower,
-				vel_upper,
+		vel_abs = self.get_symmetric_abs_lims(self.get_robot_velocity_lims(robot))
+		vel_upper_p, vel_lower_p = self.solve_end_pos_bound(
+			horizon, q0, vT, 1, vel_abs, minco_inv)
+		pT_cmd = np.array(p_cmd_nominal, copy=True)
+		for dim in range(2):
+			pT_cmd[dim, 0] = self.project_scalar_to_bounds(
+				float(p_cmd_nominal[dim, 0]),
+				float(vel_lower_p[dim, 0]),
+				float(vel_upper_p[dim, 0]),
 			)
-			vel_upper_p, vel_lower_p = self.solve_end_pos_bound(
-				horizon, q0, vT_candidate, 1, vel_abs, minco_inv)
-			acc_upper_p, acc_lower_p = self.solve_end_pos_bound(
-				horizon, q0, vT_candidate, 2, acc_abs, minco_inv)
-			feasible_lower = np.maximum.reduce((vel_lower_p, acc_lower_p, pos_lower))
-			feasible_upper = np.minimum.reduce((vel_upper_p, acc_upper_p, pos_upper))
-			if np.all(feasible_lower <= feasible_upper + 1e-8):
-				pT_cmd = np.clip(p_cmd_nominal, feasible_lower, feasible_upper)
-				return pT_cmd, vT_candidate
-		pT_cmd = np.clip(p0, pos_lower, pos_upper)
-		vT_cmd = np.clip(v0, vel_lower, vel_upper)
-		return pT_cmd, vT_cmd
+		return pT_cmd
 	def set_visualization_detail(self, detailed_on=False):
 		self.detailed_visualization_on = bool(detailed_on)
 		if self.detailed_visualization_on:
@@ -360,22 +353,22 @@ class Example8(Problem):
 		p0 = state[self.state_idxs[robot], :]
 		delta = action[self.action_idxs[robot], :]
 		p_cmd_raw = p0 + delta
-		position_lims = self.state_lims[self.state_idxs[robot], :]
-		p_cmd_feasible = np.clip(
-			p_cmd_raw,
-			position_lims[:, 0].reshape((-1, 1)),
-			position_lims[:, 1].reshape((-1, 1)),
-		)
-		return p_cmd_raw, p_cmd_feasible
+		return p_cmd_raw, p_cmd_raw
 
-	def compute_terminal_velocity_ref(self, p0, p_cmd_feasible, robot, horizon):
-		velocity_lims = self.get_robot_velocity_lims(robot)
-		desired_velocity = (p_cmd_feasible - p0) / max(float(horizon), 1e-8)
-		return np.clip(
-			desired_velocity,
-			velocity_lims[:, 0].reshape((-1, 1)),
-			velocity_lims[:, 1].reshape((-1, 1)),
+	def compute_terminal_velocity(self, p0, v0, a0, p_cmd, robot, horizon):
+		T = max(float(horizon), 1e-8)
+		vT_nom = (
+			15.0 * (p_cmd - p0)
+			- 7.0 * T * v0
+			- (T * T) * a0
+		) / (8.0 * T)
+		vel_lims = self.get_robot_velocity_lims(robot)
+		vT = np.clip(
+			vT_nom,
+			vel_lims[:, 0].reshape((-1, 1)),
+			vel_lims[:, 1].reshape((-1, 1)),
 		)
+		return vT
 
 	def evaluate_rollout(self, coeffs, t):
 		pos = (coeffs.T @ self.construct_beta(t, 0)).reshape((2, 1))
@@ -475,10 +468,11 @@ class Example8(Problem):
 		p0 = state[self.state_idxs[robot], :]
 		v0 = state[self.vel_idxs[robot], :]
 		a0 = state[self.acc_idxs[robot], :]
-		_, p_cmd_feasible = self.compute_feasible_command(state, action, robot)
+		_, p_cmd_nominal = self.compute_feasible_command(state, action, robot)
+		vT = self.compute_terminal_velocity(p0, v0, a0, p_cmd_nominal, robot, horizon)
 		minco_inv = self.get_minco_matrix_inv(horizon)
-		pT_cmd, _ = self.project_terminal_command(
-			p0, v0, a0, p_cmd_feasible, robot, horizon, minco_inv)
+		pT_cmd = self.project_terminal_command(
+			p0, v0, a0, p_cmd_nominal, vT, robot, horizon, minco_inv)
 		return pT_cmd
 
 	def get_render_target_segments(self, states, actions=None):
@@ -555,9 +549,10 @@ class Example8(Problem):
 		v0 = state[self.vel_idxs[robot], :]
 		a0 = state[self.acc_idxs[robot], :]
 		p_cmd_raw, p_cmd_nominal = self.compute_feasible_command(state, action, robot)
+		vT_cmd = self.compute_terminal_velocity(p0, v0, a0, p_cmd_nominal, robot, horizon)
 		minco_inv = self.get_minco_matrix_inv(horizon)
-		pT_cmd, vT_cmd = self.project_terminal_command(
-			p0, v0, a0, p_cmd_nominal, robot, horizon, minco_inv)
+		pT_cmd = self.project_terminal_command(
+			p0, v0, a0, p_cmd_nominal, vT_cmd, robot, horizon, minco_inv)
 		coeffs = self.solve_minco_coeffs(
 			p0, v0, a0, pT_cmd, vT_cmd, minco_inv)
 		position, velocity, acceleration = self.rollout_quintic(coeffs, safe_dt)
@@ -591,9 +586,10 @@ class Example8(Problem):
 
 		a0 = state[self.acc_idxs[robot], :]
 		_, p_cmd_nominal = self.compute_feasible_command(state, action, robot)
+		vT_cmd = self.compute_terminal_velocity(p0, v0, a0, p_cmd_nominal, robot, safe_dt)
 		minco_inv = self.get_minco_matrix_inv(safe_dt)
-		pT_cmd, vT_cmd = self.project_terminal_command(
-			p0, v0, a0, p_cmd_nominal, robot, safe_dt, minco_inv)
+		pT_cmd = self.project_terminal_command(
+			p0, v0, a0, p_cmd_nominal, vT_cmd, robot, safe_dt, minco_inv)
 		coeffs = self.solve_minco_coeffs(
 			p0, v0, a0, pT_cmd, vT_cmd, minco_inv)
 		return self.rollout_quintic(coeffs, t)

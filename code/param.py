@@ -25,7 +25,7 @@ class Param:
 		dirname = "/home/sjc/decision_making/current/historymodels/12_MINCO_pva_minco_quintic"
 		
 		n = 4 # num robots 
-		l =30 # learning iteration
+		l =39 # learning iteration
 		if oracles_on:
 			self.policy_oracle_paths = ["{}/model_policy_l{}_i{}.pt".format(dirname,l,i) for i in range(n)]	
 			self.value_oracle_path = "{}/model_value_l{}.pt".format(dirname,l)
