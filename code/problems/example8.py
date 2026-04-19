@@ -292,6 +292,19 @@ class MincoTrajFactory:
 		bbT_int = self.betabetaT_int(T, POLY_CTRL_EFFORT - 1)
 		self.pJpC_ += bbT_int
 
+	def solveEndPosBoundCombined(self, ts, q0, velT, maxVel, maxAcc, seg_count=5):
+		
+		#综合速度约束(rank=1)与加速度约束(rank=2)，计算终端位置pT的可行区间交集。
+
+	
+		vel_ub, vel_lb = self.solveEndPosBound(ts, q0, velT, rank=1, maxVel=maxVel)
+		acc_ub, acc_lb = self.solveEndPosBound(ts, q0, velT, rank=2, maxVel=maxAcc)
+
+		# 取交集：下界取更严格者（更大），上界取更严格者（更小）
+		lb = np.maximum(vel_lb, acc_lb)
+		ub = np.minimum(vel_ub, acc_ub)
+		return lb, ub
+
 
 # 2d pursuit-evasion with per-step relative goal commands and MINCO-style rollout
 class Example8(Problem):
@@ -551,9 +564,7 @@ class Example8(Problem):
 			velocity_lims[:, 1].reshape((-1, 1)),
 		)
 
-	# ------------------------------------------------------------------
-	# Polynomial trajectory planning (aligned with MincoTrajFactory)
-	# ------------------------------------------------------------------
+	
 
 	# 轨迹规划：构造给定时刻 t 与阶数 rank 的 beta 向量
 	def construct_beta(self, t, rank):
@@ -602,12 +613,12 @@ class Example8(Problem):
 		beta = self.construct_beta(t, 2)
 		return (beta @ coff).reshape((2, 1))
 
-	# ------------------------------------------------------------------
-	# Robot state rollout (uses polynomial trajectory planning)
-	# ------------------------------------------------------------------
+	
 
 	# 状态推演：基于多项式轨迹规划，计算机器人在 dt 后的新状态
 	# 采用 dof=2（末端速度和加速度自由），加入最小 jerk + 加速度代价优化
+	# 新增：循环更新机制——先计算综合速度/加速度约束下的终端位置可行区间，
+	# 若上层目标越界则裁剪修正，再用修正后的目标重新生成轨迹，直至收敛。
 	def rollout_robot_state(self, state, action, robot, dt):
 		safe_dt = max(float(dt), 1e-8)
 		horizon = self.get_minco_horizon(safe_dt)
@@ -622,11 +633,36 @@ class Example8(Problem):
 		factory.add_acc_cost(horizon)
 
 		q0 = np.vstack((p0.T, v0.T, a0.T))
-		qT = np.vstack((p_cmd_feasible.T, np.zeros((2, 2), dtype=float)))
 		ts = np.array([0.0, horizon])
 
-		traj = factory.solveWithCostJ(q0, qT, ts, dof=2)
+		# ---- 循环更新机制：动态可行区间裁剪与轨迹重求解 ----
+		# 获取当前机器人的速度与加速度限幅（假设各轴对称且相同）
+		vel_lims = self.get_robot_velocity_lims(robot)
+		acc_lims = self.state_lims[self.acc_idxs[robot], :]
+		max_vel = float(vel_lims[0, 1])
+		max_acc = float(acc_lims[0, 1])
+		velT = np.zeros((2,), dtype=float)
 
+		# 初始终端目标取上层给出的可行指令位置
+		pT = p_cmd_feasible.copy()
+		max_replan_iter = 3
+
+		for _ in range(max_replan_iter):
+			# 1) 用当前 pT 求解轨迹
+			qT = np.vstack((pT.T, np.zeros((2, 2), dtype=float)))
+			traj = factory.solveWithCostJ(q0, qT, ts, dof=2)
+
+			# 2) 基于当前初始状态（等价于当前轨迹起点状态）计算终端位置综合可行区间
+			lb, ub = factory.solveEndPosBoundCombined(ts, q0, velT, max_vel, max_acc)
+
+			# 3) 若目标已在可行区间内，提前收敛退出循环
+			if np.all(pT >= lb - 1e-6) and np.all(pT <= ub + 1e-6):
+				break
+
+			# 4) 越界修正：将目标点裁剪到当前可行区间内
+			pT = np.clip(pT, lb, ub)
+
+		# 循环结束后 traj 已经是用修正后 pT 生成的轨迹
 		position = traj.get_pos(safe_dt).reshape((2, 1))
 		velocity = traj.get_vel(safe_dt).reshape((2, 1))
 		acceleration = traj.get_acc(safe_dt).reshape((2, 1))
