@@ -40,7 +40,13 @@ def save_figs(filename):
 def open_figs(filename):
 	pdf_path = os.path.join( os.getcwd(), filename)
 	if os.path.exists(pdf_path):
-		subprocess.call(["xdg-open", pdf_path])
+		if os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"):
+			subprocess.Popen(
+				["xdg-open", pdf_path],
+				stdout=subprocess.DEVNULL,
+				stderr=subprocess.DEVNULL,
+				start_new_session=True,
+			)
 
 
 def merge_figs(pdfs,result_fn):
@@ -411,8 +417,14 @@ def make_movie(sim_result,instance,filename):
 	ln = ax.plot([],[],[])
 	target_fps = 30
 	total_time = times[-1] - times[0]
-	num_frames = int(total_time * target_fps) + 1
+	if total_time <= 1e-12:
+		num_frames = 2
+		effective_fps = target_fps
+	else:
+		effective_fps = float(target_fps)
+		num_frames = max(2, int(total_time * effective_fps) + 1)
 	new_times = np.linspace(times[0], times[-1], num_frames)
+	print("making movie: {} frames at {:.2f} fps".format(num_frames, effective_fps))
 
 	def frame_render_history(frame_time):
 		if frame_time <= times[0] + 1e-12:
@@ -453,7 +465,20 @@ def make_movie(sim_result,instance,filename):
 			ax.text(0.02, 0.98, f"t = {frame_time:.2f}s", transform=ax.transAxes, va='top')
 		return ln
 
-	interval = 1000.0 / target_fps
+	interval = 1000.0 / effective_fps
 	anim = animation.FuncAnimation(fig, animate, frames=num_frames, interval=interval)
-	anim.save(filename, fps=target_fps, dpi=120)
+	writer = animation.PillowWriter(fps=effective_fps)
+	root, ext = os.path.splitext(filename)
+	if not ext:
+		ext = ".gif"
+	tmp_filename = root + ".tmp" + ext
+	last_report = {"frame": -1}
+
+	def progress_callback(frame_idx, _total):
+		if frame_idx == 0 or frame_idx == num_frames - 1 or frame_idx - last_report["frame"] >= 10:
+			print("making movie: rendered frame {}/{}".format(frame_idx + 1, num_frames))
+			last_report["frame"] = frame_idx
+
+	anim.save(tmp_filename, writer=writer, dpi=80, progress_callback=progress_callback)
+	os.replace(tmp_filename, filename)
 	plt.close(fig)

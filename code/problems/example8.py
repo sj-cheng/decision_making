@@ -16,8 +16,8 @@ class Example8(Problem):
 		super(Example8,self).__init__()
 
 		self.t0 = 0
-		self.tf = 40
-		self.dt = 0.5
+		self.tf = 80
+		self.dt = 1
 		self.gamma = 1.0
 		self.num_robots = 4 
 
