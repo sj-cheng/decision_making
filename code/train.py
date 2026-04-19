@@ -36,6 +36,7 @@ parallel_on = True
 solver_name = "C_PUCT_V1"
 # solver_name = "PUCT_V1"
 problem_name = "example8"
+use_minco_dynamics = True  # True: MINCO, False: direct displacement propagation
 policy_oracle_name = "gaussian"
 value_oracle_name = "deterministic"
 
@@ -630,7 +631,9 @@ def self_play(problem,policy_oracle,value_oracle,l):
 
 if __name__ == '__main__':
 
-	problem = get_problem(problem_name) 
+	problem = get_problem(problem_name)
+	if hasattr(problem, 'use_minco_dynamics'):
+		problem.use_minco_dynamics = use_minco_dynamics
 	format_dir(clean_dirnames=["data","models"]) 
 
 	num_D_pi_samples = num_D_pi

@@ -25,7 +25,7 @@ class Problem_Settings
         float m2; 
         float c1; 
         float c2; 
-        float R; 
+        float R;
         Eigen::Matrix<float,-1,2> state_lims;
         Eigen::Matrix<float,-1,2> action_lims;
         Eigen::Matrix<float,-1,2> init_lims;

@@ -36,6 +36,8 @@ class Param:
 		self.pretty_plot_on = True
 		# Toggle dense MINCO diagnostic pages in run.pdf.
 		self.detailed_visualization_on = True
+		# True: MINCO quintic trajectory planning; False: direct displacement-to-velocity propagation
+		self.use_minco_dynamics = True
 
 		# solver settings 
 		self.number_simulations = 1000

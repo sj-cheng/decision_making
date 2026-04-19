@@ -21,6 +21,8 @@ def make_instance(param):
 	problem = get_problem(param.problem_name)
 	if hasattr(problem, "set_visualization_detail"):
 		problem.set_visualization_detail(param.detailed_visualization_on)
+	if hasattr(param, 'use_minco_dynamics') and hasattr(problem, 'use_minco_dynamics'):
+		problem.use_minco_dynamics = param.use_minco_dynamics
 	policy_oracle,value_oracle = get_oracles(problem,
 		value_oracle_name = param.value_oracle_name,
 		value_oracle_path = param.value_oracle_path,

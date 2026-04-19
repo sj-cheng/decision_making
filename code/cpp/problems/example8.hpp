@@ -254,11 +254,10 @@ class Example8 : public Problem {
 			float timestep) override
 		{
 			Eigen::Matrix<float,-1,1> next_state = state;
-			const float safe_dt = std::max(timestep, 1e-8f);
-			const float horizon = get_minco_horizon(safe_dt);
-			const Mat6f boundary_inv = construct_quintic_boundary_inverse(horizon);
+			Eigen::Matrix<float,2,2> Fd = m_I + m_Fc * timestep;
+			Eigen::Matrix<float,2,2> Bd = m_Bc * timestep;
 
-            // dynamics 
+            // dynamics
 			for (int ii = 0; ii < m_num_robots; ii++){
 				next_state(m_active_idxs[ii], 0) = state(m_active_idxs[ii], 0);
 				if (!is_active(state, ii)) {
@@ -268,32 +267,13 @@ class Example8 : public Problem {
 					next_state.block(m_acc_idxs[ii][0],0,m_acc_idxs[ii].size(),1).setZero();
 					continue;
 					}
-
-				const Vec2f p0 = state.block(m_state_idxs[ii][0],0,2,1);
-				const Vec2f v0 = state.block(m_vel_idxs[ii][0],0,2,1);
-				const Vec2f a0 = state.block(m_acc_idxs[ii][0],0,2,1);
-				const auto command_pair = compute_feasible_command(state, action, ii);
-				const Vec2f p_cmd_raw = command_pair.first;
-				const Vec2f p_cmd_feasible = command_pair.second;
-				(void)p_cmd_raw;
-				const Vec2f vT_ref = compute_terminal_velocity_ref(p0, p_cmd_feasible, ii, horizon);
-				const Vec2f aT_ref = Vec2f::Zero();
-				const Mat6x2f coeffs = solve_quintic_coeffs(
-					p0,
-					v0,
-					a0,
-					p_cmd_feasible,
-					vT_ref,
-					aT_ref,
-					boundary_inv);
-				Vec2f position;
-				Vec2f velocity;
-				Vec2f acceleration;
-				evaluate_quintic(coeffs, safe_dt, position, velocity, acceleration);
-				next_state.block(m_state_idxs[ii][0],0,2,1) = position;
-				next_state.block(m_vel_idxs[ii][0],0,2,1) = velocity;
-				next_state.block(m_acc_idxs[ii][0],0,2,1) = acceleration;
-            }   
+				auto control = action.block(m_action_idxs[ii][0],0,2,1) / timestep;
+				next_state.block(m_state_idxs[ii][0],0,m_state_idxs[ii].size(),1) =
+					Fd * state.block(m_state_idxs[ii][0],0,m_state_idxs[ii].size(),1) +
+					Bd * control;
+				next_state.block(m_vel_idxs[ii][0],0,m_vel_idxs[ii].size(),1).setZero();
+				next_state.block(m_acc_idxs[ii][0],0,m_acc_idxs[ii].size(),1).setZero();
+            }
 
             next_state(m_time_idx,0) = state(m_time_idx,0) + timestep;
 			auto capture_pairs = get_capture_pairs(next_state);
