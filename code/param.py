@@ -17,7 +17,7 @@ class Param:
 
 		# oracles 
 		oracles_on =True
-		dirname = "../current/models"
+		dirname = "../current/modelhistory/models"
 		#dirname = "/home/sjc/NTE/decision_making/current/models"
 		#dirname = "/home/ben/projects/decision_making/saved/example9"
 		# dirname = "/home/ben/projects/decision_making/saved/example6"

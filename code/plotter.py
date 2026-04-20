@@ -293,7 +293,7 @@ def plot_regression_test(results,render_on=True):
 	# render each sim result 
 	if render_on:
 		for (param, sim_result) in results:
-			fig,ax = sim_result["instance"]["problem"].render(states=sim_result["states"])
+			fig,ax = sim_result["instance"]["problem"].render(states=sim_result["states"], actions=sim_result["actions"])
 			fig.suptitle(param.key)
 	else:
 		param, sim_result = results[0]
@@ -360,34 +360,127 @@ def plot_regression_test(results,render_on=True):
 	fig.suptitle("Total Reward Regression Test")
 
 
-def make_movie(sim_result,instance,filename):
-
+def make_movie(sim_result, instance, filename):
 	from matplotlib import animation
+	import matplotlib.patches as patches
 
 	states = sim_result["states"]
-	times = sim_result["times"] 
+	times = sim_result["times"]
+	actions = sim_result.get("actions")
+	problem = instance["problem"]
+	num_robots = problem.num_robots
 
-	if instance["problem"].name in ["example3","example4"]:
-		fig,ax = make_3d_fig()
+	is_3d = problem.name in ["example3", "example4"]
+	if is_3d:
+		fig, ax = make_3d_fig()
 	else:
-		fig,ax = make_fig()
+		fig, ax = make_fig()
 
-	def init(): 
+	colors = get_n_colors(num_robots)
+	labels = ["Evader1", "Evader2", "Pursuer1", "Pursuer2"]
+
+	# 预计算每个 robot 的完整插值轨迹（高分辨率，保证平滑）
+	substeps = getattr(problem, 'detailed_render_substeps', 50)
+	trajectories = []
+	for robot in range(num_robots):
+		traj = problem.sample_render_trajectory(states, robot, actions=actions, substeps=substeps)
+		trajectories.append(traj)
+
+	# 记录起点位置
+	start_positions = [states[0, problem.state_idxs[robot]] for robot in range(num_robots)]
+
+	total_time = float(times[-1])
+	fps = 20
+	n_frames = int(np.ceil(fps * total_time)) + 1
+
+	def init():
 		ax.clear()
-		ax.grid(True)
+		ax.grid(True, alpha=0.3)
+		if not is_3d:
+			lims = problem.state_lims
+			ax.set_xlim((lims[0, 0], lims[0, 1]))
+			ax.set_ylim((lims[1, 0], lims[1, 1]))
+			ax.set_aspect((lims[1, 1] - lims[1, 0]) / (lims[0, 1] - lims[0, 0]))
 
-	# animate over trajectory
 	def animate(i_t):
 		init()
-		#print(i_t/len(times))
-		time_idxs = range(i_t) #times[0:i_t]
-		states_i = states[time_idxs]
-		if i_t < 2:
-			return ln 
-		else:
-			instance["problem"].render(states=states_i,fig=fig,ax=ax)
-		return ln 
+		t = min(i_t / fps, total_time)
 
-	ln = ax.plot([],[],[])
-	anim = animation.FuncAnimation(fig, animate, frames=len(times)+1, interval=1)
-	anim.save(filename, fps=10, dpi=120)
+		for robot in range(num_robots):
+			traj = trajectories[robot]
+			traj_times = traj["times"]
+			traj_positions = traj["positions"]
+
+			# 找到当前时间 t 在轨迹中的索引
+			idx = np.searchsorted(traj_times, t)
+
+			# 绘制到 t 为止的轨迹线
+			if idx > 1:
+				end_idx = min(idx, len(traj_positions))
+				if is_3d:
+					ax.plot(
+						traj_positions[:end_idx, 0],
+						traj_positions[:end_idx, 1],
+						traj_positions[:end_idx, 2],
+						color=colors[robot],
+						linewidth=2.0,
+					)
+				else:
+					ax.plot(
+						traj_positions[:end_idx, 0],
+						traj_positions[:end_idx, 1],
+						color=colors[robot],
+						linewidth=2.0,
+					)
+
+			# 在 traj_times[idx-1] 和 traj_times[idx] 之间线性插值当前位置
+			if idx == 0:
+				pos = traj_positions[0]
+			elif idx >= len(traj_positions):
+				pos = traj_positions[-1]
+			else:
+				t0, t1 = traj_times[idx - 1], traj_times[idx]
+				if t1 > t0:
+					alpha = (t - t0) / (t1 - t0)
+					pos = (1 - alpha) * traj_positions[idx - 1] + alpha * traj_positions[idx]
+				else:
+					pos = traj_positions[idx - 1]
+
+			# 绘制起点（小圆点，半透明）
+			if not is_3d:
+				ax.plot(
+					start_positions[robot][0],
+					start_positions[robot][1],
+					color=colors[robot],
+					marker='o',
+					markersize=4,
+					alpha=0.5,
+				)
+				# 绘制当前位置（大圆点）
+				ax.plot(
+					pos[0], pos[1],
+					color=colors[robot],
+					marker='o',
+					markersize=7,
+				)
+
+			# 逃逸方显示捕获范围
+			if robot in [0, 1] and not is_3d and idx > 0:
+				circ = patches.Circle(
+					(pos[0], pos[1]),
+					problem.desired_distance,
+					facecolor='green',
+					alpha=0.3,
+				)
+				ax.add_patch(circ)
+
+		# 图例
+		for robot in range(num_robots):
+			ax.plot(np.nan, np.nan, color=colors[robot], label=labels[robot])
+		ax.legend(loc='best')
+
+		# 时间标题
+		ax.set_title(f"t = {t:.2f}s / {total_time:.1f}s")
+
+	anim = animation.FuncAnimation(fig, animate, frames=n_frames, interval=1000 / fps)
+	anim.save(filename, fps=fps, dpi=120)

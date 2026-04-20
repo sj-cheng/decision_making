@@ -2,6 +2,7 @@
 import numpy as np
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
+from scipy.linalg import solve_discrete_are, pinv
 
 from typing_extensions import override
 # custom
@@ -306,6 +307,100 @@ class MincoTrajFactory:
 		return lb, ub
 
 
+class ClosedLoopMincoPlanner:
+	def __init__(self, piece_dt, ratio):
+		self.piece_dt = max(float(piece_dt), 1e-8)
+		self.ratio = max(float(ratio), 1e-8)
+		self.planning_t = self.piece_dt / self.ratio
+
+		mat_m = self.construct_minco_m2(self.planning_t)
+		mat_m_inv = np.linalg.inv(mat_m)
+		mat_r = self.construct_mat_r(self.piece_dt)
+		mat_s = np.diag([1, 1, 1, 1, 0, 0])
+		mat_u = np.array([[0, 0, 0, 0, 1, 0]], dtype=float).T
+
+		self.mat_F = mat_m_inv @ mat_s @ mat_r
+		self.mat_G = (mat_m_inv @ mat_u).reshape(-1, 1)
+
+		Q = self.construct_bbint(self.piece_dt, rank=POLY_CTRL_EFFORT)
+		R = np.array([[1.0]], dtype=float)
+		P = solve_discrete_are(self.mat_F, self.mat_G, Q, R)
+		self.K = np.linalg.inv(R + self.mat_G.T @ P @ self.mat_G) @ (self.mat_G.T @ P @ self.mat_F)
+		self.Kpp = pinv(self.mat_G) @ (np.identity(POLY_DEGREE + 1) - self.mat_F) + self.K
+
+		self.mat_F_stab = self.mat_F - self.mat_G @ self.K
+		self.mat_G_stab = self.mat_G @ self.Kpp @ np.array([[1, 0, 0, 0, 0, 0]], dtype=float).T
+
+	@staticmethod
+	def construct_bbint(pieceT, rank):
+		return MincoTrajFactory.betabetaT_int(pieceT, rank)
+
+	@staticmethod
+	def construct_mat_r(pieceT):
+		mat_r = np.zeros((POLY_DEGREE + 1, POLY_DEGREE + 1), dtype=float)
+		for i in range(POLY_DEGREE + 1):
+			mat_r[i, :] = PolyTraj.construct_beta(pieceT, i)
+		return mat_r
+
+	@staticmethod
+	def construct_minco_m2(pieceT):
+		mat_m = np.zeros((POLY_DEGREE + 1, POLY_DEGREE + 1), dtype=float)
+		for i in range(POLY_DEGREE - 1):
+			mat_m[i, :] = PolyTraj.construct_beta(0.0, i)
+
+		mat_m[-2, :] = PolyTraj.construct_beta(pieceT, 0)
+		mat_m[-1, :] = PolyTraj.construct_beta(pieceT, 1)
+
+		mat_m_inv = np.linalg.inv(mat_m)
+		mat_supp = np.array([[0, 0, 0, 0, 0, 1]], dtype=float) @ mat_m_inv @ ClosedLoopMincoPlanner.construct_bbint(pieceT, rank=POLY_CTRL_EFFORT)
+		mat_m[-1, :] = mat_supp[-1, :]
+		return mat_m
+
+	def coeff_state_from_kinematics(self, position, velocity, acceleration):
+		coeff = np.zeros((POLY_DEGREE + 1, POLY_DIM), dtype=float)
+		coeff[0, :] = np.asarray(position, dtype=float).reshape((POLY_DIM,))
+		coeff[1, :] = np.asarray(velocity, dtype=float).reshape((POLY_DIM,))
+		coeff[2, :] = 0.5 * np.asarray(acceleration, dtype=float).reshape((POLY_DIM,))
+		return coeff
+
+	def iterate(self, target_pos, coeff_state):
+		target_pos = np.asarray(target_pos, dtype=float).reshape((1, POLY_DIM))
+		return self.mat_F_stab @ coeff_state + self.mat_G_stab @ target_pos
+
+	def calc_bound(self, t, rank, val, coeff_state):
+		const_coeff = PolyTraj.construct_beta(t, rank).reshape((1, POLY_DEGREE + 1)) @ self.mat_F_stab
+		bound_coeff = PolyTraj.construct_beta(t, rank).reshape((1, POLY_DEGREE + 1)) @ self.mat_G_stab
+		bound_coeff_scalar = float(bound_coeff[0, 0])
+		if abs(bound_coeff_scalar) < 1e-8:
+			return np.array([
+				[[-np.inf, -np.inf]],
+				[[np.inf, np.inf]],
+			], dtype=float)
+		if bound_coeff_scalar < 0:
+			val = -val
+		lower = (-val - const_coeff @ coeff_state) / bound_coeff_scalar
+		upper = ( val - const_coeff @ coeff_state) / bound_coeff_scalar
+		return np.array([lower, upper], dtype=float)
+
+	def bound_all(self, coeff_state, nckpt, max_vel, max_acc):
+		ts = [((i + 1) / (nckpt + 1) * self.planning_t) for i in range(nckpt)]
+		vel_bounds = np.concatenate([self.calc_bound(t, 1, max_vel, coeff_state) for t in ts], axis=1)
+		acc_bounds = np.concatenate([self.calc_bound(t, 2, max_acc, coeff_state) for t in ts], axis=1)
+		bounds = np.concatenate((vel_bounds, acc_bounds), axis=1)
+		lower = np.max(bounds[0, :, :], axis=0)
+		upper = np.min(bounds[1, :, :], axis=0)
+		return lower.reshape((POLY_DIM, 1)), upper.reshape((POLY_DIM, 1))
+
+	def get_pos(self, coeff_state, t):
+		return (PolyTraj.construct_beta(t, 0) @ coeff_state).reshape((POLY_DIM, 1))
+
+	def get_vel(self, coeff_state, t):
+		return (PolyTraj.construct_beta(t, 1) @ coeff_state).reshape((POLY_DIM, 1))
+
+	def get_acc(self, coeff_state, t):
+		return (PolyTraj.construct_beta(t, 2) @ coeff_state).reshape((POLY_DIM, 1))
+
+
 # 2d pursuit-evasion with per-step relative goal commands and MINCO-style rollout
 class Example8(Problem):
 
@@ -314,8 +409,8 @@ class Example8(Problem):
 		super(Example8,self).__init__()
 
 		self.t0 = 0
-		self.tf = 40
-		self.dt = 0.5
+		self.tf = 80
+		self.dt = 1
 		self.gamma = 1.0
 		self.num_robots = 4
 
@@ -326,9 +421,10 @@ class Example8(Problem):
 		self.state_control_weight = 1e-5
 		# Each robot action is a per-step local command offset delta. The
 		# low-level controller converts the resulting command point into a
-		# smooth quintic trajectory and evaluates that trajectory at t = dt.
+		# smooth quintic trajectory and evaluates that trajectory through a
+		# closed-loop MINCO rollout.
 		self.action_semantics = "relative_position_delta"
-		self.low_level_controller_name = "relative_goal_to_minco_rollout"
+		self.low_level_controller_name = "relative_goal_to_closed_loop_minco"
 		self.default_render_substeps = 10
 		self.detailed_render_substeps = 30
 		self.default_diagnostic_substeps = 50
@@ -343,11 +439,11 @@ class Example8(Problem):
 		self.turn_groups = [np.array([0, 1]), np.array([2, 3])]
 		self.time_idx = 8
 		self.active_idxs = [9, 10, 11, 12]
-		self.evader_speed_lim_range = (1.0, 1.0)
-		self.pursuer_speed_lim_range = (1.0, 1.0)
+		self.evader_speed_lim_range = (2.0, 2.0)
+		self.pursuer_speed_lim_range = (2.0, 2.0)
 
-		self.evader_acc_lim =  self.evader_speed_lim_range[1] / self.dt
-		self.pursuer_acc_lim =  self.pursuer_speed_lim_range[1] / self.dt
+		self.evader_acc_lim = self.evader_speed_lim_range[1] / self.dt
+		self.pursuer_acc_lim = self.pursuer_speed_lim_range[1] / self.dt
 		self.state_dim = 29
 		self.action_dim = 8
 		self.state_idxs = [
@@ -374,7 +470,6 @@ class Example8(Problem):
 			np.array([4,5]),  # P1 action
 			np.array([6,7]),  # P2 action
 		]
-		#self.times = np.arange(self.t0,self.tf,self.dt)
 		self.times = np.arange(self.t0,self.tf+self.dt,self.dt)
 		self.policy_encoding_dim = self.state_dim
 		self.value_encoding_dim = self.state_dim
@@ -409,14 +504,19 @@ class Example8(Problem):
 			(-self.pursuer_acc_lim, self.pursuer_acc_lim),
 			(-self.pursuer_acc_lim, self.pursuer_acc_lim),
 			(-self.pursuer_acc_lim, self.pursuer_acc_lim),
-			))
-		self.approx_dist = (self.state_lims[0,1] - self.state_lims[0,0])/10
+		))
+		self.approx_dist = (self.state_lims[0,1] - self.state_lims[0,0]) / 10
 
-		self.current_evader_speed_lim = 1.0
-		self.current_pursuer_speed_lim = 1.0
+		self.current_evader_speed_lim = 2.0
+		self.current_pursuer_speed_lim = 2.0
 		self.update_action_lims()
 
 		self.use_minco_dynamics = True
+		self.closed_loop_piece_dt = 0.1
+		self.closed_loop_ratio = 0.1
+		self.closed_loop_checkpoints = 20
+		self._closed_loop_planners = {}
+		self._coeff_state_cache = {}
 		self.Fc = np.array(((0,0), (0,0)))
 		self.Bc = np.array(((1,0), (0,1)))
 
@@ -516,6 +616,56 @@ class Example8(Problem):
 	def get_minco_horizon(self, dt):
 		return max(float(dt), 1e-8)
 
+	def get_closed_loop_schedule(self, dt):
+		remaining = max(float(dt), 1e-8)
+		piece_dt = max(float(self.closed_loop_piece_dt), 1e-8)
+		durations = []
+		while remaining > 1e-9:
+			duration = min(piece_dt, remaining)
+			durations.append(duration)
+			remaining -= duration
+		return durations
+
+	def get_closed_loop_planner(self, piece_dt):
+		key = round(float(piece_dt), 8)
+		if key not in self._closed_loop_planners:
+			self._closed_loop_planners[key] = ClosedLoopMincoPlanner(piece_dt=piece_dt, ratio=self.closed_loop_ratio)
+		return self._closed_loop_planners[key]
+
+	def get_state_signature(self, state):
+		return np.ascontiguousarray(np.asarray(state, dtype=np.float64)).tobytes()
+
+	def clear_closed_loop_cache(self):
+		self._coeff_state_cache = {}
+
+	def get_robot_dynamic_limits(self, robot):
+		vel_lims = self.get_robot_velocity_lims(robot)
+		acc_lims = self.state_lims[self.acc_idxs[robot], :]
+		max_vel = float(np.min(vel_lims[:, 1]))
+		max_acc = float(np.min(acc_lims[:, 1]))
+		return max_vel, max_acc
+
+	def coeff_state_from_state(self, state, robot, planner=None):
+		if planner is None:
+			planner = self.get_closed_loop_planner(self.closed_loop_piece_dt)
+		position = state[self.state_idxs[robot], :].reshape((POLY_DIM,))
+		velocity = state[self.vel_idxs[robot], :].reshape((POLY_DIM,))
+		acceleration = state[self.acc_idxs[robot], :].reshape((POLY_DIM,))
+		return planner.coeff_state_from_kinematics(position, velocity, acceleration)
+
+	def get_cached_coeff_state(self, state, robot, planner=None):
+		signature = self.get_state_signature(state)
+		robot_coeffs = self._coeff_state_cache.get(signature, {})
+		if robot in robot_coeffs:
+			return np.array(robot_coeffs[robot], copy=True)
+		coeff_state = self.coeff_state_from_state(state, robot, planner=planner)
+		self._coeff_state_cache.setdefault(signature, {})[robot] = np.array(coeff_state, copy=True)
+		return coeff_state
+
+	def cache_coeff_state_for_state(self, state, robot, coeff_state):
+		signature = self.get_state_signature(state)
+		self._coeff_state_cache.setdefault(signature, {})[robot] = np.array(coeff_state, copy=True)
+
 	# 查询：获取指定机器人的动作限幅（位移限幅）
 	def get_robot_action_lims(self, robot):
 		return self.action_lims[self.action_idxs[robot], :]
@@ -534,24 +684,42 @@ class Example8(Problem):
 			self.render_substeps = self.default_render_substeps
 			self.diagnostic_substeps = self.default_diagnostic_substeps
 
-	# 辅助：计算可行指令（裁剪动作与位置到限幅范围内）
-	def compute_feasible_command(self, state, action, robot):
+	def compute_dynamic_position_bounds(self, state, robot, planner=None, coeff_state=None):
+		if planner is None:
+			planner = self.get_closed_loop_planner(self.closed_loop_piece_dt)
+		if coeff_state is None:
+			coeff_state = self.get_cached_coeff_state(state, robot, planner=planner)
+
+		max_vel, max_acc = self.get_robot_dynamic_limits(robot)
+		lower, upper = planner.bound_all(
+			coeff_state=coeff_state,
+			nckpt=self.closed_loop_checkpoints,
+			max_vel=max_vel,
+			max_acc=max_acc,
+		)
+		position_lims = self.state_lims[self.state_idxs[robot], :]
+		lower = np.maximum(lower, position_lims[:, 0].reshape((-1, 1)))
+		upper = np.minimum(upper, position_lims[:, 1].reshape((-1, 1)))
+
+		p0 = state[self.state_idxs[robot], :]
+		collapse_mask = lower > upper
+		if np.any(collapse_mask):
+			lower[collapse_mask] = p0[collapse_mask]
+			upper[collapse_mask] = p0[collapse_mask]
+		return lower, upper
+
+	# 辅助：计算可行指令（experiment2 风格：先算未来窗口可行区间，再裁剪目标点）
+	def compute_feasible_command(self, state, action, robot, planner=None, coeff_state=None):
 		p0 = state[self.state_idxs[robot], :]
 		delta = action[self.action_idxs[robot], :]
 		p_cmd_raw = p0 + delta
-		action_lims = self.get_robot_action_lims(robot)
-		delta_clipped = np.clip(
-			delta,
-			action_lims[:, 0].reshape((-1, 1)),
-			action_lims[:, 1].reshape((-1, 1)),
+		lower, upper = self.compute_dynamic_position_bounds(
+			state,
+			robot,
+			planner=planner,
+			coeff_state=coeff_state,
 		)
-		p_cmd_bounded = p0 + delta_clipped
-		position_lims = self.state_lims[self.state_idxs[robot], :]
-		p_cmd_feasible = np.clip(
-			p_cmd_bounded,
-			position_lims[:, 0].reshape((-1, 1)),
-			position_lims[:, 1].reshape((-1, 1)),
-		)
+		p_cmd_feasible = np.clip(p_cmd_raw, lower, upper)
 		return p_cmd_raw, p_cmd_feasible
 
 	# 辅助：根据可行指令计算末端参考速度（带限幅）
@@ -621,52 +789,47 @@ class Example8(Problem):
 	# 若上层目标越界则裁剪修正，再用修正后的目标重新生成轨迹，直至收敛。
 	def rollout_robot_state(self, state, action, robot, dt):
 		safe_dt = max(float(dt), 1e-8)
-		horizon = self.get_minco_horizon(safe_dt)
-		p0 = state[self.state_idxs[robot], :]
-		v0 = state[self.vel_idxs[robot], :]
-		a0 = state[self.acc_idxs[robot], :]
-		p_cmd_raw, p_cmd_feasible = self.compute_feasible_command(state, action, robot)
+		target_world = state[self.state_idxs[robot], :] + action[self.action_idxs[robot], :]
+		current_state = np.array(state, copy=True)
+		p_cmd_raw = np.array(target_world, copy=True)
+		p_cmd_feasible = np.array(target_world, copy=True)
+		final_coeff_state = None
+		segments = []
 
-		factory = MincoTrajFactory()
-		factory.clearPJpC()
-		factory.add_control_effort_cost(horizon)
-		factory.add_acc_cost(horizon)
+		for piece_dt in self.get_closed_loop_schedule(safe_dt):
+			planner = self.get_closed_loop_planner(piece_dt)
+			coeff_state = self.get_cached_coeff_state(current_state, robot, planner=planner)
 
-		q0 = np.vstack((p0.T, v0.T, a0.T))
-		ts = np.array([0.0, horizon])
+			piece_action = np.zeros_like(action)
+			piece_action[self.action_idxs[robot], :] = target_world - current_state[self.state_idxs[robot], :]
+			p_cmd_raw, p_cmd_feasible = self.compute_feasible_command(
+				current_state,
+				piece_action,
+				robot,
+				planner=planner,
+				coeff_state=coeff_state,
+			)
+			final_coeff_state = planner.iterate(p_cmd_feasible.reshape((POLY_DIM,)), coeff_state)
+			position = planner.get_pos(final_coeff_state, piece_dt)
+			velocity = planner.get_vel(final_coeff_state, piece_dt)
+			acceleration = planner.get_acc(final_coeff_state, piece_dt)
 
-		# ---- 循环更新机制：动态可行区间裁剪与轨迹重求解 ----
-		# 获取当前机器人的速度与加速度限幅（假设各轴对称且相同）
-		vel_lims = self.get_robot_velocity_lims(robot)
-		acc_lims = self.state_lims[self.acc_idxs[robot], :]
-		max_vel = float(vel_lims[0, 1])
-		max_acc = float(acc_lims[0, 1])
-		velT = np.zeros((2,), dtype=float)
+			segments.append({
+				"duration": piece_dt,
+				"coeff_state": np.array(final_coeff_state, copy=True),
+				"p_cmd_raw": np.array(p_cmd_raw, copy=True),
+				"p_cmd_feasible": np.array(p_cmd_feasible, copy=True),
+			})
 
-		# 初始终端目标取上层给出的可行指令位置
-		pT = p_cmd_feasible.copy()
-		max_replan_iter = 3
+			current_state[self.state_idxs[robot], :] = position
+			current_state[self.vel_idxs[robot], :] = velocity
+			current_state[self.acc_idxs[robot], :] = acceleration
+			self.cache_coeff_state_for_state(current_state, robot, final_coeff_state)
 
-		for _ in range(max_replan_iter):
-			# 1) 用当前 pT 求解轨迹
-			qT = np.vstack((pT.T, np.zeros((2, 2), dtype=float)))
-			traj = factory.solveWithCostJ(q0, qT, ts, dof=2)
-
-			# 2) 基于当前初始状态（等价于当前轨迹起点状态）计算终端位置综合可行区间
-			lb, ub = factory.solveEndPosBoundCombined(ts, q0, velT, max_vel, max_acc)
-
-			# 3) 若目标已在可行区间内，提前收敛退出循环
-			if np.all(pT >= lb - 1e-6) and np.all(pT <= ub + 1e-6):
-				break
-
-			# 4) 越界修正：将目标点裁剪到当前可行区间内
-			pT = np.clip(pT, lb, ub)
-
-		# 循环结束后 traj 已经是用修正后 pT 生成的轨迹
-		position = traj.get_pos(safe_dt).reshape((2, 1))
-		velocity = traj.get_vel(safe_dt).reshape((2, 1))
-		acceleration = traj.get_acc(safe_dt).reshape((2, 1))
-		return p_cmd_raw, p_cmd_feasible, position, velocity, acceleration
+		position = current_state[self.state_idxs[robot], :]
+		velocity = current_state[self.vel_idxs[robot], :]
+		acceleration = current_state[self.acc_idxs[robot], :]
+		return p_cmd_raw, p_cmd_feasible, position, velocity, acceleration, final_coeff_state, segments
 
 	# ------------------------------------------------------------------
 	# Game logic
@@ -726,6 +889,7 @@ class Example8(Problem):
 	# 游戏逻辑：随机生成一个合法的初始状态
 	def initialize(self):
 		valid = False
+		self.clear_closed_loop_cache()
 		while not valid:
 			self.randomize_speed_limits()
 			state = sample_vector(self.init_lims)
@@ -737,6 +901,9 @@ class Example8(Problem):
 			for acc_idxs in self.acc_idxs:
 				state[acc_idxs, 0] = 0.0
 			valid = not self.is_terminal(state) and (self.min_cross_team_dist(state) > 2*self.init_min_dist)
+		for robot in range(self.num_robots):
+			if self.is_active(state, robot):
+				self.cache_coeff_state_for_state(state, robot, self.coeff_state_from_state(state, robot))
 		return state
 
 	# 游戏逻辑：计算归一化的单步奖励（捕获奖励 + 存活奖励 + 越界惩罚）
@@ -764,24 +931,29 @@ class Example8(Problem):
 	# 游戏逻辑：执行一个仿真步，更新所有机器人状态并处理捕获判定
 	def step(self,s,a,dt):
 		s_tp1 = np.array(s,copy=True)
+		next_coeff_states = {}
 		for robot in range(self.num_robots):
 			s_tp1[self.active_idxs[robot], 0] = s[self.active_idxs[robot], 0]
 			if not self.is_active(s, robot):
 				s_tp1[self.state_idxs[robot],:] = s[self.state_idxs[robot],:]
 				s_tp1[self.vel_idxs[robot],:] = 0.0
 				s_tp1[self.acc_idxs[robot],:] = 0.0
+				next_coeff_states[robot] = self.coeff_state_from_state(s_tp1, robot)
 				continue
 
 			if self.use_minco_dynamics:
-				_, _, position, velocity, acceleration = self.rollout_robot_state(s, a, robot, dt)
+				_, _, position, velocity, acceleration, coeff_state, _ = self.rollout_robot_state(s, a, robot, dt)
 				s_tp1[self.state_idxs[robot],:] = position
 				s_tp1[self.vel_idxs[robot],:] = velocity
 				s_tp1[self.acc_idxs[robot],:] = acceleration
+				next_coeff_states[robot] = coeff_state
 			else:
 				velocity = self.action_to_velocity(a, robot, dt)
 				s_tp1[self.state_idxs[robot],:] = self.propagate_robot_state(s, velocity, dt, robot)
 				s_tp1[self.vel_idxs[robot],:] = 0.0
 				s_tp1[self.acc_idxs[robot],:] = 0.0
+				next_coeff_states[robot] = self.coeff_state_from_state(s_tp1, robot)
+
 		s_tp1[self.time_idx, 0] = s[self.time_idx, 0] + dt
 		for p, e in self.get_capture_pairs(s_tp1):
 			s_tp1[self.active_idxs[p], 0] = 0.0
@@ -790,6 +962,14 @@ class Example8(Problem):
 			s_tp1[self.vel_idxs[e], :] = 0.0
 			s_tp1[self.acc_idxs[p], :] = 0.0
 			s_tp1[self.acc_idxs[e], :] = 0.0
+			next_coeff_states[p] = self.coeff_state_from_state(s_tp1, p)
+			next_coeff_states[e] = self.coeff_state_from_state(s_tp1, e)
+
+		for robot in range(self.num_robots):
+			coeff_state = next_coeff_states.get(robot)
+			if coeff_state is None:
+				coeff_state = self.coeff_state_from_state(s_tp1, robot)
+			self.cache_coeff_state_for_state(s_tp1, robot, coeff_state)
 		return s_tp1
 
 	# 游戏逻辑：判断当前状态是否为终止状态（越界/全捕获/超时）
@@ -849,9 +1029,15 @@ class Example8(Problem):
 	# Visualization
 	# ------------------------------------------------------------------
 
-	# 可视化：对单个机器人在状态序列间插值采样，生成连续轨迹（位置/速度/加速度）
-	def sample_render_trajectory(self, states, robot, substeps=None):
+	# 可视化：对单个机器人在状态序列间采样，优先按真实动作重放闭环 MINCO 轨迹
+	def sample_render_trajectory(self, states, robot, actions=None, substeps=None):
 		states = np.atleast_2d(np.asarray(states).squeeze())
+		if actions is not None:
+			actions = np.asarray(actions)
+			if actions.size == 0:
+				actions = None
+			else:
+				actions = np.atleast_2d(actions.squeeze())
 		if substeps is None:
 			substeps = self.render_substeps
 		if states.shape[0] == 0:
@@ -871,27 +1057,47 @@ class Example8(Problem):
 			s0 = states[step_idx].reshape((-1, 1))
 			s1 = states[step_idx + 1].reshape((-1, 1))
 			horizon = max(float(s1[self.time_idx, 0] - s0[self.time_idx, 0]), 1e-8)
-			q0 = np.vstack((
-				s0[self.state_idxs[robot], :].T,
-				s0[self.vel_idxs[robot], :].T,
-				s0[self.acc_idxs[robot], :].T,
-			))
-			qT = np.vstack((
-				s1[self.state_idxs[robot], :].T,
-				s1[self.vel_idxs[robot], :].T,
-				s1[self.acc_idxs[robot], :].T,
-			))
-			ts = np.array([0.0, horizon])
-			c = self.init_by_qT(q0, qT, ts)
-			sample_times = np.linspace(0.0, horizon, int(substeps) + 1)[1:]
-			for t in sample_times:
-				position = self.get_pos(c, t)
-				velocity = self.get_vel(c, t)
-				acceleration = self.get_acc(c, t)
-				times.append(float(s0[self.time_idx, 0] + t))
-				positions.append(position[:, 0])
-				velocities.append(velocity[:, 0])
-				accelerations.append(acceleration[:, 0])
+			if actions is not None and step_idx < actions.shape[0] and self.use_minco_dynamics and self.is_active(s0, robot):
+				action = actions[step_idx].reshape((-1, 1))
+				_, _, _, _, _, _, segments = self.rollout_robot_state(s0, action, robot, horizon)
+				elapsed = 0.0
+				for segment in segments:
+					segment_dt = float(segment["duration"])
+					segment_substeps = max(1, int(np.ceil(substeps * segment_dt / horizon)))
+					sample_times = np.linspace(0.0, segment_dt, segment_substeps + 1)[1:]
+					planner = self.get_closed_loop_planner(segment_dt)
+					coeff_state = segment["coeff_state"]
+					for t in sample_times:
+						position = planner.get_pos(coeff_state, t)
+						velocity = planner.get_vel(coeff_state, t)
+						acceleration = planner.get_acc(coeff_state, t)
+						times.append(float(s0[self.time_idx, 0] + elapsed + t))
+						positions.append(position[:, 0])
+						velocities.append(velocity[:, 0])
+						accelerations.append(acceleration[:, 0])
+					elapsed += segment_dt
+			else:
+				q0 = np.vstack((
+					s0[self.state_idxs[robot], :].T,
+					s0[self.vel_idxs[robot], :].T,
+					s0[self.acc_idxs[robot], :].T,
+				))
+				qT = np.vstack((
+					s1[self.state_idxs[robot], :].T,
+					s1[self.vel_idxs[robot], :].T,
+					s1[self.acc_idxs[robot], :].T,
+				))
+				ts = np.array([0.0, horizon])
+				c = self.init_by_qT(q0, qT, ts)
+				sample_times = np.linspace(0.0, horizon, int(substeps) + 1)[1:]
+				for t in sample_times:
+					position = self.get_pos(c, t)
+					velocity = self.get_vel(c, t)
+					acceleration = self.get_acc(c, t)
+					times.append(float(s0[self.time_idx, 0] + t))
+					positions.append(position[:, 0])
+					velocities.append(velocity[:, 0])
+					accelerations.append(acceleration[:, 0])
 
 		return {
 			"times": np.asarray(times),
@@ -901,14 +1107,20 @@ class Example8(Problem):
 		}
 
 	# 可视化：获取单个机器人在状态序列间的插值位置点（供渲染调用）
-	def sample_render_positions(self, states, robot):
-		return self.sample_render_trajectory(states, robot)["positions"]
+	def sample_render_positions(self, states, robot, actions=None):
+		return self.sample_render_trajectory(states, robot, actions=actions)["positions"]
 
 	# 可视化：渲染追逃场景（轨迹、起点、终点、捕获范围、图例）
-	def render(self,states=None,fig=None,ax=None):
+	def render(self,states=None,actions=None,fig=None,ax=None):
 		# states, np array in [nt x state_dim]
 
 		states = np.atleast_2d(np.asarray(states).squeeze()) if states is not None else None
+		if actions is not None:
+			actions = np.asarray(actions)
+			if actions.size == 0:
+				actions = None
+			else:
+				actions = np.atleast_2d(actions.squeeze())
 
 		if fig == None or ax == None:
 			fig,ax = plotter.make_fig()
@@ -918,7 +1130,7 @@ class Example8(Problem):
 			colors = plotter.get_n_colors(self.num_robots)
 			for robot in range(self.num_robots):
 				robot_state_idxs = self.state_idxs[robot]
-				render_positions = self.sample_render_positions(states, robot)
+				render_positions = self.sample_render_positions(states, robot, actions=actions)
 
 				ax.plot(render_positions[:,0], render_positions[:,1], color=colors[robot])
 				ax.plot(states[0,robot_state_idxs[0]], states[0,robot_state_idxs[1]], color=colors[robot],marker='o')
@@ -960,7 +1172,7 @@ class Example8(Problem):
 		labels = ["Evader1", "Evader2", "Pursuer1", "Pursuer2"]
 
 		for robot in range(self.num_robots):
-			trajectory = self.sample_render_trajectory(states, robot, substeps=self.diagnostic_substeps)
+			trajectory = self.sample_render_trajectory(states, robot, actions=sim_result.get("actions"), substeps=self.diagnostic_substeps)
 			sampled_times = trajectory["times"]
 			sampled_vel = trajectory["velocities"]
 			sampled_acc = trajectory["accelerations"]
