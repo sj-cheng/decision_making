@@ -36,7 +36,7 @@ parallel_on = True
 solver_name = "C_PUCT_V1"
 # solver_name = "PUCT_V1"
 problem_name = "example8"
-use_minco_dynamics = True  # True: MINCO, False: direct displacement propagation
+use_minco_dynamics = False  # True: MINCO, False: direct displacement propagation
 policy_oracle_name = "gaussian"
 value_oracle_name = "deterministic"
 
@@ -45,11 +45,11 @@ plot_on= False
 # learning 
 L = 80
 mode = 1 # 0: weighted sum, 1: best child, 2: subsamples 
-num_D_pi = 20000
+num_D_pi = 30000
 # num_D_pi = 500
 # num_D_pi = 200
-num_pi_eval = 2000
-num_D_v = 20000
+num_pi_eval = 3000
+num_D_v = 30000
 num_v_eval = 2000
 num_subsamples = 5
 num_self_play_plots = 10
@@ -233,7 +233,7 @@ def make_expert_demonstration_pi(problem,robot,policy_oracle,value_oracle):
 
 	paths = []
 	if parallel_on: 
-		ncpu = mp.cpu_count() - 22
+		ncpu = mp.cpu_count() - 18
 		print("Total CPU:{}".format(ncpu))
 		num_per_pool = int(num_D_pi / ncpu)
 

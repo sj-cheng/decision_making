@@ -32,6 +32,7 @@ class Example8 : public Problem {
 		std::vector<std::vector<int>> m_acc_idxs = {{21, 22}, {23, 24}, {25, 26}, {27, 28}};
 		std::vector<int> m_evaders = {0, 1};
 		std::vector<int> m_pursuers = {2, 3};
+		std::vector<Eigen::Matrix<float,2,2>> m_obstacles;
 
 	private:
 		using Vec2f = Eigen::Matrix<float,2,1>;
@@ -176,6 +177,7 @@ class Example8 : public Problem {
 			m_action_lims = problem_settings.action_lims; 
 			m_init_lims = problem_settings.init_lims;
 			m_dist = problem_settings.desired_distance;
+			m_obstacles = problem_settings.obstacles;
 
 			std::uniform_real_distribution<double> dist(0,1.0f); 
 
@@ -189,6 +191,54 @@ class Example8 : public Problem {
 		}
 		bool is_active(const Eigen::Matrix<float,-1,1> &state, int robot) const {
 			return state(m_active_idxs[robot], 0) > 0.5f;
+		}
+
+		bool check_obstacle_collision(const Eigen::Matrix<float,-1,1> &state, int robot) const {
+			float x = state(m_state_idxs[robot][0], 0);
+			float y = state(m_state_idxs[robot][1], 0);
+			for (const auto &obs : m_obstacles) {
+				if (x >= obs(0,0) && x <= obs(0,1) && y >= obs(1,0) && y <= obs(1,1)) {
+					return true;
+				}
+			}
+			return false;
+		}
+
+		float obstacle_boundary_distance(const Vec2f &pos, const Eigen::Matrix<float,2,2> &obs) const {
+			const float x = pos(0);
+			const float y = pos(1);
+			const float dx = std::max({obs(0,0) - x, 0.0f, x - obs(0,1)});
+			const float dy = std::max({obs(1,0) - y, 0.0f, y - obs(1,1)});
+			return std::sqrt(dx * dx + dy * dy);
+		}
+
+		bool has_spawn_clearance(const Eigen::Matrix<float,-1,1> &state, int robot) const {
+			const Vec2f pos = state.block(m_state_idxs[robot][0], 0, 2, 1);
+			const float min_clearance = 1.0f * m_dist;
+			for (const auto &obs : m_obstacles) {
+				if (obstacle_boundary_distance(pos, obs) <= min_clearance) {
+					return false;
+				}
+			}
+			return true;
+		}
+
+		Vec2f sample_spawn_position(std::default_random_engine &gen, int robot) {
+			Vec2f pos;
+			const int x_idx = m_state_idxs[robot][0];
+			const int y_idx = m_state_idxs[robot][1];
+			const float x_low = m_state_lims(x_idx, 0);
+			const float x_high = m_state_lims(x_idx, 1);
+			const float y_low = m_state_lims(y_idx, 0);
+			const float y_high = m_state_lims(y_idx, 1);
+			const float y_mid = 0.5f * (y_low + y_high);
+			pos(0) = static_cast<float>(dist(gen)) * (x_high - x_low) + x_low;
+			if (std::find(m_evaders.begin(), m_evaders.end(), robot) != m_evaders.end()) {
+				pos(1) = static_cast<float>(dist(gen)) * (y_high - y_mid) + y_mid;
+			} else {
+				pos(1) = static_cast<float>(dist(gen)) * (y_mid - y_low) + y_low;
+			}
+			return pos;
 		}
 
 		int active_evader_count(const Eigen::Matrix<float,-1,1> &state) const {
@@ -248,6 +298,15 @@ class Example8 : public Problem {
 			return result;
 		}
 
+		bool is_robot_state_valid(const Eigen::Matrix<float,-1,1> &state, int robot) const {
+			int s0 = m_state_idxs[robot][0];
+			int sd = static_cast<int>(m_state_idxs[robot].size());
+			bool in_low  = (state.block(s0,0,sd,1).array() >= m_state_lims.block(s0,0,sd,1).array()).all();
+			bool in_high = (state.block(s0,0,sd,1).array() <= m_state_lims.block(s0,1,sd,1).array()).all();
+
+			return in_low && in_high && !check_obstacle_collision(state, robot);
+		}
+
 		Eigen::Matrix<float,-1,1> step(
 			Eigen::Matrix<float,-1,1> state,
 			Eigen::Matrix<float,-1,1> action,
@@ -257,7 +316,6 @@ class Example8 : public Problem {
 			Eigen::Matrix<float,2,2> Fd = m_I + m_Fc * timestep;
 			Eigen::Matrix<float,2,2> Bd = m_Bc * timestep;
 
-            // dynamics
 			for (int ii = 0; ii < m_num_robots; ii++){
 				next_state(m_active_idxs[ii], 0) = state(m_active_idxs[ii], 0);
 				if (!is_active(state, ii)) {
@@ -273,7 +331,7 @@ class Example8 : public Problem {
 					Bd * control;
 				next_state.block(m_vel_idxs[ii][0],0,m_vel_idxs[ii].size(),1).setZero();
 				next_state.block(m_acc_idxs[ii][0],0,m_acc_idxs[ii].size(),1).setZero();
-            }
+			}
 
             next_state(m_time_idx,0) = state(m_time_idx,0) + timestep;
 			auto capture_pairs = get_capture_pairs(next_state);
@@ -313,7 +371,7 @@ class Example8 : public Problem {
 				r(0,0)=r1; r(1,0)=r1; r(2,0)=r2; r(3,0)=r2;
 			} 
             
-            if ((state(m_time_idx,0) < m_tf) && (next_state(m_time_idx,0) >= m_tf)){
+	            if ((state(m_time_idx,0) < m_tf) && (next_state(m_time_idx,0) >= m_tf)){
 				int surviving_evaders = active_evader_count(next_state);
 				for (int e : m_evaders) {
 					r(e,0) += 0.5f * surviving_evaders;
@@ -321,24 +379,26 @@ class Example8 : public Problem {
 			}
         
             for (int j=0; j<m_num_robots; ++j){
-                int s0 = m_state_idxs[j][0];
-                int sd = (int)m_state_idxs[j].size();
-                bool in_low  = (next_state.block(s0,0,sd,1).array() >= m_state_lims.block(s0,0,sd,1).array()).all();
-                bool in_high = (next_state.block(s0,0,sd,1).array() <= m_state_lims.block(s0,1,sd,1).array()).all();
-                if (!(in_low && in_high)) r(j,0) = -1.0f;
+                if (!is_robot_state_valid(next_state, j)) {
+                	if (std::find(m_evaders.begin(), m_evaders.end(), j) != m_evaders.end()) {
+                		for (int e : m_evaders) {
+                			r(e,0) = -1.0f;
+                		}
+                	} else {
+                		for (int p : m_pursuers) {
+                			r(p,0) = -1.0f;
+                		}
+                	}
+                }
             }
-		
+
 			return r;
         }
 
         bool is_valid(Eigen::Matrix<float,-1,1> state) override
         {
             for (int j = 0; j < m_num_robots; ++j) {
-                int s0 = m_state_idxs[j][0];
-                int sd = static_cast<int>(m_state_idxs[j].size());
-                bool in_low  = (state.block(s0,0,sd,1).array() >= m_state_lims.block(s0,0,sd,1).array()).all();
-                bool in_high = (state.block(s0,0,sd,1).array() <= m_state_lims.block(s0,1,sd,1).array()).all();
-                if (!(in_low && in_high)) {
+                if (!is_robot_state_valid(state, j)) {
                     return false;
                 }
             }
@@ -354,8 +414,34 @@ class Example8 : public Problem {
             active_pursuer_count(state) == 0);
         }
 
-        bool is_captured(Eigen::Matrix<float,-1,1> state) {
+		bool is_captured(Eigen::Matrix<float,-1,1> state) {
         return !get_capture_pairs(state).empty();
         }
+
+		Eigen::Matrix<float,-1,1> initialize(std::default_random_engine & gen)
+		{
+			Eigen::Matrix<float,-1,1> state(m_state_dim,1);
+			bool valid = false;
+			while (!valid) {
+				for (int ii = 0; ii < m_state_dim; ++ii) {
+					float alpha = dist(gen);
+					state(ii,0) = alpha * (m_init_lims(ii,1) - m_init_lims(ii,0)) + m_init_lims(ii,0);
+				}
+				for (int robot = 0; robot < m_num_robots; ++robot) {
+					state.block(m_state_idxs[robot][0], 0, 2, 1) = sample_spawn_position(gen, robot);
+				}
+				valid = !is_terminal(state);
+				if (!valid) {
+					continue;
+				}
+				for (int robot = 0; robot < m_num_robots; ++robot) {
+					if (!has_spawn_clearance(state, robot)) {
+						valid = false;
+						break;
+					}
+				}
+			}
+			return state;
+		}
 		
 };

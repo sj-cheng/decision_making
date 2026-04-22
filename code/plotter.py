@@ -401,6 +401,16 @@ def make_movie(sim_result, instance, filename):
 			ax.set_xlim((lims[0, 0], lims[0, 1]))
 			ax.set_ylim((lims[1, 0], lims[1, 1]))
 			ax.set_aspect((lims[1, 1] - lims[1, 0]) / (lims[0, 1] - lims[0, 0]))
+			if hasattr(problem, 'obstacles') and problem.obstacles:
+				for obstacle in problem.obstacles:
+					rect = patches.Rectangle(
+						(obstacle[0, 0], obstacle[1, 0]),
+						(obstacle[0, 1] - obstacle[0, 0]),
+						(obstacle[1, 1] - obstacle[1, 0]),
+						facecolor='gray',
+						alpha=0.7,
+					)
+					ax.add_patch(rect)
 
 	def animate(i_t):
 		init()

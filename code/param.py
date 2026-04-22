@@ -6,7 +6,7 @@ class Param:
 	def __init__(self):
 
 		# 
-		self.parallel_on = False
+		self.parallel_on = True
 		self.num_trials = 100 
 
 		# names 
@@ -17,10 +17,8 @@ class Param:
 
 		# oracles 
 		oracles_on =True
-		dirname = "../current/modelhistory/models"
-		#dirname = "/home/sjc/NTE/decision_making/current/models"
-		#dirname = "/home/ben/projects/decision_making/saved/example9"
-		# dirname = "/home/ben/projects/decision_making/saved/example6"
+		dirname = "../current/models"
+		#dirname = "../current/historymodels/12_MINCO_pva_minco_quintic"
 
 		n = 4 # num robots 
 		l =39 # learning iteration 
@@ -32,10 +30,10 @@ class Param:
 			self.value_oracle_path = None 
 
 		# settings
-		self.movie_on =True	
-		self.pretty_plot_on = True
+		self.movie_on =False
+		self.pretty_plot_on = False
 		# Toggle dense MINCO diagnostic pages in run.pdf.
-		self.detailed_visualization_on = True
+		self.detailed_visualization_on = False
 		# True: MINCO quintic trajectory planning; False: direct displacement-to-velocity propagation
 		self.use_minco_dynamics = True
 

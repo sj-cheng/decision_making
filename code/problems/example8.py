@@ -507,6 +507,11 @@ class Example8(Problem):
 		))
 		self.approx_dist = (self.state_lims[0,1] - self.state_lims[0,0]) / 10
 
+		self.obstacles = [
+			np.array([[-4.0, -2.0], [-1.5, 1.5]], dtype=float),  # 中间偏左
+			np.array([[2.0, 4.0], [-1.5, 1.5]], dtype=float),    # 中间偏右
+		]
+
 		self.current_evader_speed_lim = 2.0
 		self.current_pursuer_speed_lim = 2.0
 		self.update_action_lims()
@@ -575,6 +580,41 @@ class Example8(Problem):
 	# 查询：判断指定机器人是否仍处于活跃状态
 	def is_active(self, state, robot):
 		return state[self.active_idxs[robot], 0] > 0.5
+
+	# 查询：判断指定机器人是否与障碍物发生碰撞
+	def check_obstacle_collision(self, state, robot):
+		pos = state[self.state_idxs[robot], :]
+		for obstacle in self.obstacles:
+			if contains(pos, obstacle):
+				return True
+		return False
+
+	def obstacle_boundary_distance(self, pos, obstacle):
+		x = float(pos[0, 0])
+		y = float(pos[1, 0])
+		dx = max(obstacle[0, 0] - x, 0.0, x - obstacle[0, 1])
+		dy = max(obstacle[1, 0] - y, 0.0, y - obstacle[1, 1])
+		return np.hypot(dx, dy)
+
+	def has_spawn_clearance(self, state, robot):
+		pos = state[self.state_idxs[robot], :]
+		min_clearance = 1.0 * self.desired_distance
+		return all(
+			self.obstacle_boundary_distance(pos, obstacle) > min_clearance
+			for obstacle in self.obstacles
+		)
+
+	def sample_spawn_position(self, robot):
+		x_idx, y_idx = self.state_idxs[robot]
+		x_low, x_high = self.state_lims[x_idx, :]
+		y_low, y_high = self.state_lims[y_idx, :]
+		y_mid = 0.5 * (y_low + y_high)
+
+		if robot in self.evaders:
+			pos_lims = np.array(((x_low, x_high), (y_mid, y_high)), dtype=float)
+		else:
+			pos_lims = np.array(((x_low, x_high), (y_low, y_mid)), dtype=float)
+		return sample_vector(pos_lims)
 
 	# 查询：获取指定机器人的当前速度上限
 	def get_robot_speed_limit(self, robot):
@@ -893,6 +933,8 @@ class Example8(Problem):
 		while not valid:
 			self.randomize_speed_limits()
 			state = sample_vector(self.init_lims)
+			for robot in range(self.num_robots):
+				state[self.state_idxs[robot], :] = self.sample_spawn_position(robot)
 			state[self.time_idx, 0] = 0.0
 			for idx in self.active_idxs:
 				state[idx, 0] = 1.0
@@ -900,7 +942,11 @@ class Example8(Problem):
 				state[vel_idxs, 0] = 0.0
 			for acc_idxs in self.acc_idxs:
 				state[acc_idxs, 0] = 0.0
-			valid = not self.is_terminal(state) and (self.min_cross_team_dist(state) > 2*self.init_min_dist)
+			valid = (
+				not self.is_terminal(state)
+				and (self.min_cross_team_dist(state) > 2 * self.init_min_dist)
+				and all(self.has_spawn_clearance(state, robot) for robot in range(self.num_robots))
+			)
 		for robot in range(self.num_robots):
 			if self.is_active(state, robot):
 				self.cache_coeff_state_for_state(state, robot, self.coeff_state_from_state(state, robot))
@@ -924,8 +970,11 @@ class Example8(Problem):
 			surviving_evaders = self.active_evader_count(s_next)
 			reward[self.evaders, 0] += 0.5*surviving_evaders
 		for robot in range (self.num_robots):
-			if not contains(s_next[self.state_idxs[robot],:],self.state_lims[self.state_idxs[robot],:]):
-				reward[robot,0]= -1.0
+			if (not contains(s_next[self.state_idxs[robot],:],self.state_lims[self.state_idxs[robot],:])) or self.check_obstacle_collision(s_next, robot):
+				if robot in self.evaders:
+					reward[self.evaders, 0] = -1.0
+				else:
+					reward[self.pursuers, 0] = -1.0
 		return reward
 
 	# 游戏逻辑：执行一个仿真步，更新所有机器人状态并处理捕获判定
@@ -981,7 +1030,7 @@ class Example8(Problem):
 	# 游戏逻辑：判断当前状态下所有机器人是否都在合法范围内
 	def is_valid(self,state):
 		for robot in range(self.num_robots):
-			if not contains(state[self.state_idxs[robot], :], self.state_lims[self.state_idxs[robot], :]):
+			if (not contains(state[self.state_idxs[robot], :], self.state_lims[self.state_idxs[robot], :])) or self.check_obstacle_collision(state, robot):
 				return False
 		return True
 
@@ -1110,6 +1159,17 @@ class Example8(Problem):
 	def sample_render_positions(self, states, robot, actions=None):
 		return self.sample_render_trajectory(states, robot, actions=actions)["positions"]
 
+	def _draw_obstacles(self, ax):
+		for obstacle in self.obstacles:
+			rect = patches.Rectangle(
+				(obstacle[0, 0], obstacle[1, 0]),
+				(obstacle[0, 1] - obstacle[0, 0]),
+				(obstacle[1, 1] - obstacle[1, 0]),
+				facecolor='gray',
+				alpha=0.7,
+			)
+			ax.add_patch(rect)
+
 	# 可视化：渲染追逃场景（轨迹、起点、终点、捕获范围、图例）
 	def render(self,states=None,actions=None,fig=None,ax=None):
 		# states, np array in [nt x state_dim]
@@ -1124,6 +1184,8 @@ class Example8(Problem):
 
 		if fig == None or ax == None:
 			fig,ax = plotter.make_fig()
+
+		self._draw_obstacles(ax)
 
 		if states is not None:
 
