@@ -223,24 +223,6 @@ class Example8 : public Problem {
 			return true;
 		}
 
-		Vec2f sample_spawn_position(std::default_random_engine &gen, int robot) {
-			Vec2f pos;
-			const int x_idx = m_state_idxs[robot][0];
-			const int y_idx = m_state_idxs[robot][1];
-			const float x_low = m_state_lims(x_idx, 0);
-			const float x_high = m_state_lims(x_idx, 1);
-			const float y_low = m_state_lims(y_idx, 0);
-			const float y_high = m_state_lims(y_idx, 1);
-			const float y_mid = 0.5f * (y_low + y_high);
-			pos(0) = static_cast<float>(dist(gen)) * (x_high - x_low) + x_low;
-			if (std::find(m_evaders.begin(), m_evaders.end(), robot) != m_evaders.end()) {
-				pos(1) = static_cast<float>(dist(gen)) * (y_high - y_mid) + y_mid;
-			} else {
-				pos(1) = static_cast<float>(dist(gen)) * (y_mid - y_low) + y_low;
-			}
-			return pos;
-		}
-
 		int active_evader_count(const Eigen::Matrix<float,-1,1> &state) const {
 			int cnt = 0;
 			for (int e : m_evaders) {
@@ -426,9 +408,6 @@ class Example8 : public Problem {
 				for (int ii = 0; ii < m_state_dim; ++ii) {
 					float alpha = dist(gen);
 					state(ii,0) = alpha * (m_init_lims(ii,1) - m_init_lims(ii,0)) + m_init_lims(ii,0);
-				}
-				for (int robot = 0; robot < m_num_robots; ++robot) {
-					state.block(m_state_idxs[robot][0], 0, 2, 1) = sample_spawn_position(gen, robot);
 				}
 				valid = !is_terminal(state);
 				if (!valid) {

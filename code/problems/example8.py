@@ -434,6 +434,7 @@ class Example8(Problem):
 		self.diagnostic_substeps = self.default_diagnostic_substeps
 		self.desired_distance = 1.0
 		self.init_min_dist = 2.0
+		self.split_spawn_by_team = False
 		self.evaders = [0, 1]
 		self.pursuers = [2, 3]
 		self.turn_groups = [np.array([0, 1]), np.array([2, 3])]
@@ -515,6 +516,7 @@ class Example8(Problem):
 		self.current_evader_speed_lim = 2.0
 		self.current_pursuer_speed_lim = 2.0
 		self.update_action_lims()
+		self.update_init_lims()
 
 		self.use_minco_dynamics = True
 		self.closed_loop_piece_dt = 0.1
@@ -547,23 +549,6 @@ class Example8(Problem):
 		self.current_pursuer_speed_lim = np.random.uniform(*self.pursuer_speed_lim_range)
 		self.update_action_lims()
 
-		self.init_lims = np.array((
-			(-8,8), (-8,8),
-			(-8,8), (-8,8),
-			(-8,8), (-8,8),
-			(-8,8), (-8,8),
-			(0,0),
-			(1,1), (1,1), (1,1), (1,1),
-			(0,0), (0,0),
-			(0,0), (0,0),
-			(0,0), (0,0),
-			(0,0), (0,0),
-			(0,0), (0,0),
-			(0,0), (0,0),
-			(0,0), (0,0),
-			(0,0), (0,0),
-			))
-
 		self.Fc = np.array((
 			(0,0),
 			(0,0),
@@ -576,6 +561,26 @@ class Example8(Problem):
 
 		self.Q = np.eye(2)
 		self.Ru = self.state_control_weight * np.eye(2)
+
+	def update_init_lims(self):
+		evader_y_lims = (-9, 0) if self.split_spawn_by_team else (-9, 9)
+		pursuer_y_lims = (0, 9) if self.split_spawn_by_team else (-9, 9)
+		self.init_lims = np.array((
+			(-9,9), evader_y_lims,
+			(-9,9), evader_y_lims,
+			(-9,9), pursuer_y_lims,
+			(-9,9), pursuer_y_lims,
+			(0,0),
+			(1,1), (1,1), (1,1), (1,1),
+			(0,0), (0,0),
+			(0,0), (0,0),
+			(0,0), (0,0),
+			(0,0), (0,0),
+			(0,0), (0,0),
+			(0,0), (0,0),
+			(0,0), (0,0),
+			(0,0), (0,0),
+		), dtype=float)
 
 	# 查询：判断指定机器人是否仍处于活跃状态
 	def is_active(self, state, robot):
@@ -598,23 +603,11 @@ class Example8(Problem):
 
 	def has_spawn_clearance(self, state, robot):
 		pos = state[self.state_idxs[robot], :]
-		min_clearance = 1.0 * self.desired_distance
+		min_clearance = 0.1 * self.desired_distance
 		return all(
 			self.obstacle_boundary_distance(pos, obstacle) > min_clearance
 			for obstacle in self.obstacles
 		)
-
-	def sample_spawn_position(self, robot):
-		x_idx, y_idx = self.state_idxs[robot]
-		x_low, x_high = self.state_lims[x_idx, :]
-		y_low, y_high = self.state_lims[y_idx, :]
-		y_mid = 0.5 * (y_low + y_high)
-
-		if robot in self.evaders:
-			pos_lims = np.array(((x_low, x_high), (y_mid, y_high)), dtype=float)
-		else:
-			pos_lims = np.array(((x_low, x_high), (y_low, y_mid)), dtype=float)
-		return sample_vector(pos_lims)
 
 	# 查询：获取指定机器人的当前速度上限
 	def get_robot_speed_limit(self, robot):
@@ -930,11 +923,10 @@ class Example8(Problem):
 	def initialize(self):
 		valid = False
 		self.clear_closed_loop_cache()
+		self.update_init_lims()
 		while not valid:
 			self.randomize_speed_limits()
 			state = sample_vector(self.init_lims)
-			for robot in range(self.num_robots):
-				state[self.state_idxs[robot], :] = self.sample_spawn_position(robot)
 			state[self.time_idx, 0] = 0.0
 			for idx in self.active_idxs:
 				state[idx, 0] = 1.0
