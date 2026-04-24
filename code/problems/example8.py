@@ -469,9 +469,6 @@ class Example8(Problem):
 			np.array([6,7]),  # P2 action
 		]
 		self.times = np.arange(self.t0,self.tf+self.dt,self.dt)
-		self.policy_encoding_dim = self.state_dim
-		self.value_encoding_dim = self.state_dim
-
 		self.state_lims = np.array((
 			(-10,10),
 			(-10,10),
@@ -511,6 +508,9 @@ class Example8(Problem):
 			np.array([[-4.5, -2.5], [-5.5, -1.5]], dtype=float),  # bottom-left
 			np.array([[ 2.5,  4.5], [-5.5, -1.5]], dtype=float),  # bottom-right
 		]
+
+		self.policy_encoding_dim = self.state_dim + 4 * len(self.obstacles)
+		self.value_encoding_dim = self.state_dim + self.num_robots * 4 * len(self.obstacles)
 
 		self.current_evader_speed_lim = 2.0
 		self.current_pursuer_speed_lim = 2.0
@@ -592,6 +592,16 @@ class Example8(Problem):
 			if contains(pos, obstacle):
 				return True
 		return False
+
+	def first_swept_obstacle_collision(self, start_pos, end_pos, num_checks=5):
+		start_pos = np.asarray(start_pos, dtype=float).reshape((2, 1))
+		end_pos = np.asarray(end_pos, dtype=float).reshape((2, 1))
+		for alpha in np.linspace(0.0, 1.0, int(num_checks) + 1)[1:]:
+			pos = (1.0 - alpha) * start_pos + alpha * end_pos
+			for obstacle in self.obstacles:
+				if contains(pos, obstacle):
+					return pos
+		return None
 
 	def obstacle_boundary_distance(self, pos, obstacle):
 		x = float(pos[0, 0])
@@ -994,6 +1004,16 @@ class Example8(Problem):
 				s_tp1[self.acc_idxs[robot],:] = 0.0
 				next_coeff_states[robot] = self.coeff_state_from_state(s_tp1, robot)
 
+			collision_pos = self.first_swept_obstacle_collision(
+				s[self.state_idxs[robot], :],
+				s_tp1[self.state_idxs[robot], :],
+			)
+			if collision_pos is not None:
+				s_tp1[self.state_idxs[robot],:] = collision_pos
+				s_tp1[self.vel_idxs[robot],:] = 0.0
+				s_tp1[self.acc_idxs[robot],:] = 0.0
+				next_coeff_states[robot] = self.coeff_state_from_state(s_tp1, robot)
+
 		s_tp1[self.time_idx, 0] = s[self.time_idx, 0] + dt
 		for p, e in self.get_capture_pairs(s_tp1):
 			s_tp1[self.active_idxs[p], 0] = 0.0
@@ -1018,6 +1038,31 @@ class Example8(Problem):
 		#return (not self.is_valid(state)) or self.is_captured(state)
 		return ((not self.is_valid(state)) or self.active_evader_count(state) == 0 or self.active_pursuer_count(state) == 0) or state[self.time_idx, 0] >= self.tf
 
+	# 辅助：给定机器人位置，返回到所有障碍物的特征向量 (16, 1)
+	# 每个障碍物 4 维: [dx_norm, dy_norm, dist_norm, inside]
+	def _get_obstacle_features_for_pos(self, pos):
+		x = float(pos[0, 0])
+		y = float(pos[1, 0])
+		features = []
+		for obs in self.obstacles:
+			x_min, x_max = obs[0, 0], obs[0, 1]
+			y_min, y_max = obs[1, 0], obs[1, 1]
+
+			closest_x = max(x_min, min(x, x_max))
+			closest_y = max(y_min, min(y, y_max))
+
+			dx = closest_x - x
+			dy = closest_y - y
+			dist = np.hypot(dx, dy)
+
+			features.extend([
+				dx / 10.0,
+				dy / 10.0,
+				dist / 10.0,
+				1.0 if (x_min <= x <= x_max and y_min <= y <= y_max) else 0.0,
+			])
+		return np.array(features).reshape(-1, 1)
+
 	# 游戏逻辑：判断当前状态下所有机器人是否都在合法范围内
 	def is_valid(self,state):
 		for robot in range(self.num_robots):
@@ -1027,11 +1072,18 @@ class Example8(Problem):
 
 	# 状态编码：生成策略网络输入编码
 	def policy_encoding(self,state,robot):
-		return state
+		pos = state[self.state_idxs[robot], :]
+		obs_features = self._get_obstacle_features_for_pos(pos)
+		return np.vstack((state, obs_features))
 
 	# 状态编码：生成价值网络输入编码
 	def value_encoding(self,state):
-		return state
+		features = [state]
+		for robot in range(self.num_robots):
+			pos = state[self.state_idxs[robot], :]
+			obs_features = self._get_obstacle_features_for_pos(pos)
+			features.append(obs_features)
+		return np.vstack(features)
 
 	# 数据分组：按非目标机器人状态将数据集分组（用于可视化）
 	def make_groups(self,encoding,target,robot):

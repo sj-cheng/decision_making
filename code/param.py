@@ -16,7 +16,7 @@ class Param:
 		self.policy_oracle_name = "gaussian" # ["deterministic","gaussian"]
 
 		# oracles 
-		oracles_on =True
+		oracles_on =False
 		dirname = "../current/models"
 		#dirname = "../current/historymodels/13_obstacle_stable"
 

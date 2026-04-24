@@ -19,7 +19,7 @@ class DeterministicValueNetwork(torch.nn.Module):
 		self.action_dim = problem.action_dim 
 		self.device = torch.device(device)
 
-		h = 12
+		h = 64
 		psi_network_architecture = [
 			["Linear", self.encoding_dim, h], 
 			["Linear", h, h],

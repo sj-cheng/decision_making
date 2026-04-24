@@ -193,12 +193,61 @@ class Example8 : public Problem {
 			return state(m_active_idxs[robot], 0) > 0.5f;
 		}
 
+		Eigen::Matrix<float, -1, 1> get_obstacle_features_for_pos(const Vec2f &pos) const {
+			const float x = pos(0);
+			const float y = pos(1);
+			const float scene_half_width = 10.0f;
+			Eigen::Matrix<float, -1, 1> features(4 * static_cast<int>(m_obstacles.size()), 1);
+			int idx = 0;
+			for (const auto &obs : m_obstacles) {
+				const float x_min = obs(0, 0);
+				const float x_max = obs(0, 1);
+				const float y_min = obs(1, 0);
+				const float y_max = obs(1, 1);
+
+				const float closest_x = std::max(x_min, std::min(x, x_max));
+				const float closest_y = std::max(y_min, std::min(y, y_max));
+
+				const float dx = closest_x - x;
+				const float dy = closest_y - y;
+				const float dist = std::sqrt(dx * dx + dy * dy);
+
+				const bool inside = (x >= x_min && x <= x_max && y >= y_min && y <= y_max);
+
+				features(idx++, 0) = dx / scene_half_width;
+				features(idx++, 0) = dy / scene_half_width;
+				features(idx++, 0) = dist / scene_half_width;
+				features(idx++, 0) = inside ? 1.0f : 0.0f;
+			}
+			return features;
+		}
+
 		bool check_obstacle_collision(const Eigen::Matrix<float,-1,1> &state, int robot) const {
 			float x = state(m_state_idxs[robot][0], 0);
 			float y = state(m_state_idxs[robot][1], 0);
 			for (const auto &obs : m_obstacles) {
 				if (x >= obs(0,0) && x <= obs(0,1) && y >= obs(1,0) && y <= obs(1,1)) {
 					return true;
+				}
+			}
+			return false;
+		}
+
+		bool first_swept_obstacle_collision(
+			const Vec2f &start_pos,
+			const Vec2f &end_pos,
+			Vec2f &collision_pos) const
+		{
+			const int num_checks = 5;
+			for (int ii = 1; ii <= num_checks; ++ii) {
+				const float alpha = static_cast<float>(ii) / static_cast<float>(num_checks);
+				const Vec2f pos = (1.0f - alpha) * start_pos + alpha * end_pos;
+				for (const auto &obs : m_obstacles) {
+					if (pos(0) >= obs(0,0) && pos(0) <= obs(0,1) &&
+						pos(1) >= obs(1,0) && pos(1) <= obs(1,1)) {
+						collision_pos = pos;
+						return true;
+					}
 				}
 			}
 			return false;
@@ -311,6 +360,12 @@ class Example8 : public Problem {
 				next_state.block(m_state_idxs[ii][0],0,m_state_idxs[ii].size(),1) =
 					Fd * state.block(m_state_idxs[ii][0],0,m_state_idxs[ii].size(),1) +
 					Bd * control;
+				Vec2f collision_pos;
+				const Vec2f start_pos = state.block(m_state_idxs[ii][0],0,2,1);
+				const Vec2f end_pos = next_state.block(m_state_idxs[ii][0],0,2,1);
+				if (first_swept_obstacle_collision(start_pos, end_pos, collision_pos)) {
+					next_state.block(m_state_idxs[ii][0],0,2,1) = collision_pos;
+				}
 				next_state.block(m_vel_idxs[ii][0],0,m_vel_idxs[ii].size(),1).setZero();
 				next_state.block(m_acc_idxs[ii][0],0,m_acc_idxs[ii].size(),1).setZero();
 			}
@@ -399,6 +454,38 @@ class Example8 : public Problem {
 		bool is_captured(Eigen::Matrix<float,-1,1> state) {
         return !get_capture_pairs(state).empty();
         }
+
+		Eigen::Matrix<float, -1, 1> policy_encoding(
+			Eigen::Matrix<float, -1, 1> state,
+			int robot) override
+		{
+			Vec2f pos = state.block(m_state_idxs[robot][0], 0, 2, 1);
+			auto obs_features = get_obstacle_features_for_pos(pos);
+
+			Eigen::Matrix<float, -1, 1> encoding(
+				m_state_dim + 4 * static_cast<int>(m_obstacles.size()), 1);
+			encoding.block(0, 0, m_state_dim, 1) = state;
+			encoding.block(m_state_dim, 0, obs_features.rows(), 1) = obs_features;
+			return encoding;
+		}
+
+		Eigen::Matrix<float, -1, 1> value_encoding(
+			Eigen::Matrix<float, -1, 1> state) override
+		{
+			int obs_features_per_robot = 4 * static_cast<int>(m_obstacles.size());
+			int total_obs_features = m_num_robots * obs_features_per_robot;
+			Eigen::Matrix<float, -1, 1> encoding(m_state_dim + total_obs_features, 1);
+			encoding.block(0, 0, m_state_dim, 1) = state;
+
+			int offset = m_state_dim;
+			for (int robot = 0; robot < m_num_robots; ++robot) {
+				Vec2f pos = state.block(m_state_idxs[robot][0], 0, 2, 1);
+				auto obs_features = get_obstacle_features_for_pos(pos);
+				encoding.block(offset, 0, obs_features.rows(), 1) = obs_features;
+				offset += obs_features.rows();
+			}
+			return encoding;
+		}
 
 		Eigen::Matrix<float,-1,1> initialize(std::default_random_engine & gen)
 		{
