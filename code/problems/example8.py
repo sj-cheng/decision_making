@@ -419,10 +419,7 @@ class Example8(Problem):
 		self.name = "example8"
 		self.position_idx = np.arange(2)
 		self.state_control_weight = 1e-5
-		# Each robot action is a per-step local command offset delta. The
-		# low-level controller converts the resulting command point into a
-		# smooth quintic trajectory and evaluates that trajectory through a
-		# closed-loop MINCO rollout.
+
 		self.action_semantics = "relative_position_delta"
 		self.low_level_controller_name = "relative_goal_to_closed_loop_minco"
 		self.default_render_substeps = 10
@@ -509,8 +506,10 @@ class Example8(Problem):
 		self.approx_dist = (self.state_lims[0,1] - self.state_lims[0,0]) / 10
 
 		self.obstacles = [
-			np.array([[-4.0, -2.0], [-1.5, 1.5]], dtype=float),  # 中间偏左
-			np.array([[2.0, 4.0], [-1.5, 1.5]], dtype=float),    # 中间偏右
+			np.array([[-4.5, -2.5], [ 1.5,  5.5]], dtype=float),  # top-left
+			np.array([[ 2.5,  4.5], [ 1.5,  5.5]], dtype=float),  # top-right
+			np.array([[-4.5, -2.5], [-5.5, -1.5]], dtype=float),  # bottom-left
+			np.array([[ 2.5,  4.5], [-5.5, -1.5]], dtype=float),  # bottom-right
 		]
 
 		self.current_evader_speed_lim = 2.0

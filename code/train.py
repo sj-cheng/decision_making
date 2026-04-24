@@ -233,7 +233,7 @@ def make_expert_demonstration_pi(problem,robot,policy_oracle,value_oracle):
 
 	paths = []
 	if parallel_on: 
-		ncpu = mp.cpu_count() - 5
+		ncpu = mp.cpu_count() - 18
 		print("Total CPU:{}".format(ncpu))
 		num_per_pool = int(num_D_pi / ncpu)
 
