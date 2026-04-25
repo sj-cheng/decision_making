@@ -19,7 +19,7 @@ class GaussianValueNetwork(torch.nn.Module):
 		self.action_dim = problem.action_dim 
 		self.device = torch.device(device)
 
-		h = 16
+		h = 4
 		psi_network_architecture = [
 			["Linear", self.encoding_dim, h], 
 			["Linear", h, h],

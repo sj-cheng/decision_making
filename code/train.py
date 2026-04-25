@@ -42,9 +42,8 @@ value_oracle_name = "deterministic"
 
 dirname = "../current/models"
 plot_on= False	
-# learning
+# learning 
 L = 80
-resume_training = True  # True: resume from existing models in dirname; False: start from scratch (clears models)
 mode = 1 # 0: weighted sum, 1: best child, 2: subsamples 
 num_D_pi = 30000
 # num_D_pi = 500
@@ -431,39 +430,7 @@ def calculate_value(problem,sim_result):
 	return value 
 
 
-def find_latest_complete_iteration(dirname, num_robots):
-	import re
-	import glob
-	latest_l = -1
-	value_files = glob.glob(os.path.join(dirname, "model_value_l*.pt"))
-	policy_files = glob.glob(os.path.join(dirname, "model_policy_l*_i*.pt"))
-
-	value_ls = set()
-	for f in value_files:
-		m = re.search(r"model_value_l(\d+)\.pt", os.path.basename(f))
-		if m:
-			value_ls.add(int(m.group(1)))
-
-	policy_ls = [set() for _ in range(num_robots)]
-	for f in policy_files:
-		m = re.search(r"model_policy_l(\d+)_i(\d+)\.pt", os.path.basename(f))
-		if m:
-			l_val, i_val = int(m.group(1)), int(m.group(2))
-			if 0 <= i_val < num_robots:
-				policy_ls[i_val].add(l_val)
-
-	for l_val in sorted(value_ls, reverse=True):
-		is_complete = True
-		for i in range(num_robots):
-			if l_val not in policy_ls[i]:
-				is_complete = False
-				break
-		if is_complete:
-			latest_l = l_val
-			break
-	return latest_l
-
-def train_model(problem,train_dataset,test_dataset,l,oracle_name,robot=0,resume_from_existing=False):
+def train_model(problem,train_dataset,test_dataset,l,oracle_name,robot=0):
 	start_time = time.time()
 	print('training model...')
 
@@ -472,24 +439,16 @@ def train_model(problem,train_dataset,test_dataset,l,oracle_name,robot=0,resume_
 
 	if oracle_name == "policy":
 		model_fn = policy_oracle_paths[robot]
-		init_paths = [None for _ in range(problem.num_robots)]
-		if resume_from_existing and os.path.exists(model_fn):
-			print('Loading existing policy model from {} as starting point'.format(model_fn))
-			init_paths[robot] = model_fn
 		model, _ = get_oracles(problem,
 			policy_oracle_name = policy_oracle_name,
-			policy_oracle_paths = init_paths,
+			policy_oracle_paths = [None for _ in range(problem.num_robots)],
 			force = True
 			)
 		model = model[robot]
 	elif oracle_name == "value":
 		model_fn = value_oracle_path
-		init_path = model_fn if (resume_from_existing and os.path.exists(model_fn)) else None
-		if init_path:
-			print('Loading existing value model from {} as starting point'.format(init_path))
 		_, model = get_oracles(problem,
 			value_oracle_name = value_oracle_name,
-			value_oracle_path = init_path,
 			force = True
 			)
 	model.to(device)
@@ -675,11 +634,7 @@ if __name__ == '__main__':
 	problem = get_problem(problem_name)
 	if hasattr(problem, 'use_minco_dynamics'):
 		problem.use_minco_dynamics = use_minco_dynamics
-
-	if resume_training:
-		format_dir(clean_dirnames=["data"])
-	else:
-		format_dir(clean_dirnames=["data","models"])
+	format_dir(clean_dirnames=["data","models"]) 
 
 	num_D_pi_samples = num_D_pi
 	if mode == 2:
@@ -688,50 +643,38 @@ if __name__ == '__main__':
 	# 	batch_size = int(np.floor((np.min((num_D_pi_samples,num_D_v)) * train_test_split / 10)))
 	# 	print('changing batch size to {}'.format(batch_size))
 
-	start_l = 0
-	if resume_training:
-		latest_l = find_latest_complete_iteration(dirname, problem.num_robots)
-		if latest_l >= 0:
-			start_l = latest_l + 1
-			print('Resuming training from iteration {} (found complete models up to l={})'.format(start_l, latest_l))
-			if start_l >= L:
-				print('Training already complete ({} iterations). Exiting.'.format(L))
-				exit(0)
-		else:
-			print('No existing models found, starting from scratch.')
-
-	# training
-	for l in range(start_l, L):
+	# training 
+	for l in range(L):
 		start_time = time.time()
 		print('learning iteration: {}/{}...'.format(l,L))
 
 		if l == 0:
 			policy_oracle = [None for _ in range(problem.num_robots)]
 			value_oracle = None
-		else:
+		else: 
 			value_oracle_path, policy_oracle_paths = get_oracle_fn(l-1,problem.num_robots)
 			policy_oracle,value_oracle = get_oracles(problem,
 				value_oracle_name = value_oracle_name,
 				value_oracle_path = value_oracle_path,
-				policy_oracle_name = policy_oracle_name,
+				policy_oracle_name = policy_oracle_name, 
 				policy_oracle_paths = policy_oracle_paths
 				)
-
+			
 			# 跑一次自对弈，生成example
 			print('\t self play l/L: {}/{}...'.format(l,L))
 			sim_results = self_play(problem,policy_oracle,value_oracle,l-1)
 
 
-		for robot in range(problem.num_robots):
+		for robot in range(problem.num_robots): 
 			print('\t policy training iteration l/L, i/N: {}/{} {}/{}...'.format(\
 				l,L,robot,problem.num_robots))
 			train_dataset_pi, test_dataset_pi = make_expert_demonstration_pi(\
 				problem,robot,policy_oracle,value_oracle)
-			train_model(problem,train_dataset_pi,test_dataset_pi,l,"policy",robot=robot,resume_from_existing=resume_training)
-			eval_policy(problem,l,robot)
+			train_model(problem,train_dataset_pi,test_dataset_pi,l,"policy",robot=robot)
+			eval_policy(problem,l,robot) 
 
 		print('\t value training l/L: {}/{}'.format(l,L))
-		train_dataset_v, test_dataset_v = make_expert_demonstration_v(problem, l)
-		train_model(problem,train_dataset_v,test_dataset_v,l,"value",resume_from_existing=resume_training)
+		train_dataset_v, test_dataset_v = make_expert_demonstration_v(problem, l) 
+		train_model(problem,train_dataset_v,test_dataset_v,l,"value") 
 		eval_value(problem,l)
 		print('complete learning iteration: {}/{} in {}s'.format(l,L,time.time()-start_time))

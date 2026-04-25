@@ -7,7 +7,7 @@ class Param:
 
 		# 
 		self.parallel_on = True
-		self.num_trials = 1 
+		self.num_trials = 100 
 
 		# names 
 		self.problem_name = "example8" # e.g. example1, example2, example3, ...
@@ -16,9 +16,9 @@ class Param:
 		self.policy_oracle_name = "gaussian" # ["deterministic","gaussian"]
 
 		# oracles 
-		oracles_on =False
-		dirname = "../current/models"
-		#dirname = "../current/historymodels/13_obstacle_stable"
+		oracles_on =True
+		#dirname = "../current/models"
+		dirname = "../current/historymodels/13_obstacle_stable"
 
 		n = 4 # num robots 
 		l =39 # learning iteration 
@@ -30,12 +30,13 @@ class Param:
 			self.value_oracle_path = None 
 
 		# settings
-		self.movie_on = False
+		self.movie_on =False
 		self.pretty_plot_on = False
 		# Toggle dense MINCO diagnostic pages in run.pdf.
 		self.detailed_visualization_on = False
 		# True: MINCO quintic trajectory planning; False: direct displacement-to-velocity propagation
 		self.use_minco_dynamics = True
+
 		# solver settings 
 		self.number_simulations = 1000
 		self.search_depth = 100
