@@ -469,7 +469,13 @@ class Example8(Problem):
 			np.array([6,7]),  # P2 action
 		]
 		self.times = np.arange(self.t0,self.tf+self.dt,self.dt)
-		self.policy_encoding_dim = self.state_dim
+		self.lidar_num_beams = 64
+		self.lidar_num_channels = 4
+		self.lidar_self_feature_dim = 8
+		self.policy_encoding_dim = self.lidar_self_feature_dim + self.lidar_num_beams * self.lidar_num_channels
+		self.lidar_angles = 2.0 * np.pi * np.arange(self.lidar_num_beams, dtype=float) / self.lidar_num_beams
+		self.lidar_directions = np.stack((np.cos(self.lidar_angles), np.sin(self.lidar_angles)), axis=1)
+		self.lidar_half_beam_width = np.pi / self.lidar_num_beams
 		self.value_encoding_dim = self.state_dim
 
 		self.state_lims = np.array((
@@ -506,10 +512,12 @@ class Example8(Problem):
 		self.approx_dist = (self.state_lims[0,1] - self.state_lims[0,0]) / 10
 
 		self.obstacles = [
-			np.array([[-4.0, -2.0], [-3.5,-1.5]], dtype=float),  # 中间偏左
-			np.array([[2.0, 4.0], [1.5, 3.5]], dtype=float),    # 中间偏右
-			np.array([[-4.0, -2.0], [1.5, 3.5]], dtype=float),
-			np.array([[2.0, 4.0], [-3.5, -1.5]], dtype=float),
+			# np.array([[-4.0, -2.0], [-3.5,-1.5]], dtype=float),  # 中间偏左
+			# np.array([[2.0, 4.0], [1.5, 3.5]], dtype=float),    # 中间偏右
+			# np.array([[-4.0, -2.0], [1.5, 3.5]], dtype=float),
+			# np.array([[2.0, 4.0], [-3.5, -1.5]], dtype=float),
+			np.array([[-4.0,-2.0], [-1.5,1.5]], dtype=float),  # 中间偏左
+			np.array([[2.0,4.0], [-1.5,1.5]], dtype=float),    # 中间偏右
 		]
 
 		self.current_evader_speed_lim = 2.0
@@ -584,6 +592,167 @@ class Example8(Problem):
 	# 查询：判断指定机器人是否仍处于活跃状态
 	def is_active(self, state, robot):
 		return state[self.active_idxs[robot], 0] > 0.5
+
+	def same_team(self, robot_a, robot_b):
+		return (
+			(robot_a in self.evaders and robot_b in self.evaders)
+			or (robot_a in self.pursuers and robot_b in self.pursuers)
+		)
+
+	def normalize_state_value(self, value, state_idx):
+		low = float(self.state_lims[state_idx, 0])
+		high = float(self.state_lims[state_idx, 1])
+		if abs(high - low) < 1e-8:
+			return 0.0
+		return 2.0 * (float(value) - low) / (high - low) - 1.0
+
+	def lidar_max_range(self):
+		x_extent = float(self.state_lims[0, 1] - self.state_lims[0, 0])
+		y_extent = float(self.state_lims[1, 1] - self.state_lims[1, 0])
+		return max(np.hypot(x_extent, y_extent), 1e-8)
+
+	def self_lidar_features(self, state, robot):
+		state = np.asarray(state, dtype=float).reshape((-1, 1))
+		pos_idxs = self.state_idxs[robot]
+		vel_idxs = self.vel_idxs[robot]
+		acc_idxs = self.acc_idxs[robot]
+
+		features = np.zeros((self.lidar_self_feature_dim, 1), dtype=float)
+		features[0, 0] = 1.0 if self.is_active(state, robot) else 0.0
+		features[1, 0] = self.normalize_state_value(state[pos_idxs[0], 0], pos_idxs[0])
+		features[2, 0] = self.normalize_state_value(state[pos_idxs[1], 0], pos_idxs[1])
+		features[3, 0] = self.normalize_state_value(state[vel_idxs[0], 0], vel_idxs[0])
+		features[4, 0] = self.normalize_state_value(state[vel_idxs[1], 0], vel_idxs[1])
+		features[5, 0] = self.normalize_state_value(state[acc_idxs[0], 0], acc_idxs[0])
+		features[6, 0] = self.normalize_state_value(state[acc_idxs[1], 0], acc_idxs[1])
+		features[7, 0] = self.normalize_state_value(state[self.time_idx, 0], self.time_idx)
+		return features
+
+	def ray_point_distance(self, origin, direction, point):
+		rel = np.asarray(point, dtype=float).reshape((2,)) - origin
+		distance = float(np.linalg.norm(rel))
+		if distance <= 1e-8:
+			return np.inf
+		projection = float(np.dot(rel, direction))
+		if projection <= 0.0:
+			return np.inf
+		cross = float(direction[0] * rel[1] - direction[1] * rel[0])
+		angle = abs(np.arctan2(cross, projection))
+		if angle > self.lidar_half_beam_width + 1e-8:
+			return np.inf
+		return distance
+
+	def ray_box_distance(self, origin, direction, box):
+		t_min = -np.inf
+		t_max = np.inf
+		for axis in range(2):
+			low = float(box[axis, 0])
+			high = float(box[axis, 1])
+			if abs(direction[axis]) < 1e-8:
+				if origin[axis] < low or origin[axis] > high:
+					return np.inf
+				continue
+
+			t1 = (low - origin[axis]) / direction[axis]
+			t2 = (high - origin[axis]) / direction[axis]
+			if t1 > t2:
+				t1, t2 = t2, t1
+			t_min = max(t_min, t1)
+			t_max = min(t_max, t2)
+			if t_min > t_max:
+				return np.inf
+
+		if t_max < 0.0:
+			return np.inf
+		return t_min if t_min >= 0.0 else t_max
+
+	def ray_box_distances(self, origin, directions, box):
+		origin = np.asarray(origin, dtype=float).reshape((2,))
+		directions = np.asarray(directions, dtype=float)
+		distances = np.full((directions.shape[0],), np.inf, dtype=float)
+		t_min = np.full((directions.shape[0],), -np.inf, dtype=float)
+		t_max = np.full((directions.shape[0],), np.inf, dtype=float)
+		valid = np.ones((directions.shape[0],), dtype=bool)
+
+		for axis in range(2):
+			low = float(box[axis, 0])
+			high = float(box[axis, 1])
+			dir_axis = directions[:, axis]
+			parallel = np.abs(dir_axis) < 1e-8
+			if origin[axis] < low or origin[axis] > high:
+				valid[parallel] = False
+
+			non_parallel = ~parallel
+			t1 = np.empty_like(dir_axis)
+			t2 = np.empty_like(dir_axis)
+			t1[non_parallel] = (low - origin[axis]) / dir_axis[non_parallel]
+			t2[non_parallel] = (high - origin[axis]) / dir_axis[non_parallel]
+			axis_min = np.minimum(t1[non_parallel], t2[non_parallel])
+			axis_max = np.maximum(t1[non_parallel], t2[non_parallel])
+			t_min[non_parallel] = np.maximum(t_min[non_parallel], axis_min)
+			t_max[non_parallel] = np.minimum(t_max[non_parallel], axis_max)
+			valid[non_parallel] &= t_min[non_parallel] <= t_max[non_parallel]
+
+		valid &= t_max >= 0.0
+		hit_distances = np.where(t_min >= 0.0, t_min, t_max)
+		distances[valid] = hit_distances[valid]
+		return distances
+
+	def semantic_lidar(self, state, robot):
+		state = np.asarray(state, dtype=float).reshape((-1, 1))
+		channel_distances = np.full(
+			(self.lidar_num_beams, self.lidar_num_channels),
+			self.lidar_max_range(),
+			dtype=float,
+		)
+		if not self.is_active(state, robot):
+			return np.ones((self.lidar_num_beams * self.lidar_num_channels, 1), dtype=float)
+
+		max_range = float(channel_distances[0, 0])
+		origin = state[self.state_idxs[robot], 0].astype(float)
+		boundary = np.array([
+			[self.state_lims[0, 0], self.state_lims[0, 1]],
+			[self.state_lims[1, 0], self.state_lims[1, 1]],
+		], dtype=float)
+
+		for other_robot in range(self.num_robots):
+			if other_robot == robot or not self.is_active(state, other_robot):
+				continue
+			rel = state[self.state_idxs[other_robot], 0].astype(float) - origin
+			distance = float(np.linalg.norm(rel))
+			if distance <= 1e-8 or distance > max_range:
+				continue
+			projection = self.lidar_directions @ rel
+			cross = self.lidar_directions[:, 0] * rel[1] - self.lidar_directions[:, 1] * rel[0]
+			angles = np.abs(np.arctan2(cross, projection))
+			mask = (projection > 0.0) & (angles <= self.lidar_half_beam_width + 1e-8)
+			if not np.any(mask):
+				continue
+			channel = 0 if self.same_team(robot, other_robot) else 1
+			channel_distances[mask, channel] = np.minimum(channel_distances[mask, channel], distance)
+
+		for obstacle in self.obstacles:
+			distances = self.ray_box_distances(origin, self.lidar_directions, obstacle)
+			mask = np.isfinite(distances) & (distances <= max_range)
+			channel_distances[mask, 2] = np.minimum(channel_distances[mask, 2], distances[mask])
+
+		distances = self.ray_box_distances(origin, self.lidar_directions, boundary)
+		mask = np.isfinite(distances) & (distances <= max_range)
+		channel_distances[mask, 3] = np.minimum(channel_distances[mask, 3], distances[mask])
+
+		for higher_priority in range(self.lidar_num_channels):
+			higher_distances = channel_distances[:, higher_priority]
+			has_higher = higher_distances < max_range
+			for lower_priority in range(higher_priority + 1, self.lidar_num_channels):
+				tie_mask = has_higher & np.isclose(
+					channel_distances[:, lower_priority],
+					higher_distances,
+					atol=1e-8,
+					rtol=0.0,
+				)
+				channel_distances[tie_mask, lower_priority] = max_range
+
+		return np.clip(channel_distances / max_range, 0.0, 1.0).reshape((-1, 1))
 
 	# 查询：判断指定机器人是否与障碍物发生碰撞
 	def check_obstacle_collision(self, state, robot):
@@ -1027,11 +1196,15 @@ class Example8(Problem):
 
 	# 状态编码：生成策略网络输入编码
 	def policy_encoding(self,state,robot):
-		return state
+		state = np.asarray(state, dtype=float).reshape((-1, 1))
+		return np.vstack((
+			self.self_lidar_features(state, robot),
+			self.semantic_lidar(state, robot),
+		))
 
 	# 状态编码：生成价值网络输入编码
 	def value_encoding(self,state):
-		return state
+		return np.asarray(state, dtype=float).reshape((-1, 1))
 
 	# 数据分组：按非目标机器人状态将数据集分组（用于可视化）
 	def make_groups(self,encoding,target,robot):

@@ -14,6 +14,8 @@ class PolicySolver(Solver):
 	def policy(self,problem,root_state):
 		action = np.zeros((problem.action_dim,1))
 		for robot in range(problem.num_robots):
+			if hasattr(problem, "is_active") and not problem.is_active(root_state, robot):
+				continue
 			robot_action_idxs = problem.action_idxs[robot] 
 			action[robot_action_idxs,0] = self.policy_oracle[robot].eval(problem,root_state,robot).squeeze()
 		return action 

@@ -39,6 +39,191 @@ class Example8 : public Problem {
 		using Vec6f = Eigen::Matrix<float,6,1>;
 		using Mat6f = Eigen::Matrix<float,6,6>;
 		using Mat6x2f = Eigen::Matrix<float,6,2>;
+		enum {
+			kLidarNumBeams = 64,
+			kLidarNumChannels = 4,
+			kLidarSelfFeatureDim = 8,
+			kPolicyEncodingDim = kLidarSelfFeatureDim + kLidarNumBeams * kLidarNumChannels
+		};
+		std::vector<Vec2f> m_lidar_directions;
+
+		static constexpr float lidar_pi() {
+			return 3.14159265358979323846f;
+		}
+
+		bool same_team(int robot_a, int robot_b) const {
+			const bool a_evader = std::find(m_evaders.begin(), m_evaders.end(), robot_a) != m_evaders.end();
+			const bool b_evader = std::find(m_evaders.begin(), m_evaders.end(), robot_b) != m_evaders.end();
+			const bool a_pursuer = std::find(m_pursuers.begin(), m_pursuers.end(), robot_a) != m_pursuers.end();
+			const bool b_pursuer = std::find(m_pursuers.begin(), m_pursuers.end(), robot_b) != m_pursuers.end();
+			return (a_evader && b_evader) || (a_pursuer && b_pursuer);
+		}
+
+		float normalize_state_value(float value, int state_idx) const {
+			const float low = m_state_lims(state_idx, 0);
+			const float high = m_state_lims(state_idx, 1);
+			if (std::abs(high - low) < 1e-8f) {
+				return 0.0f;
+			}
+			return 2.0f * (value - low) / (high - low) - 1.0f;
+		}
+
+		float lidar_max_range() const {
+			const float x_extent = m_state_lims(0, 1) - m_state_lims(0, 0);
+			const float y_extent = m_state_lims(1, 1) - m_state_lims(1, 0);
+			return std::max(std::sqrt(x_extent * x_extent + y_extent * y_extent), 1e-8f);
+		}
+
+		Eigen::Matrix<float,-1,1> self_lidar_features(
+			const Eigen::Matrix<float,-1,1> &state,
+			int robot) const
+		{
+			Eigen::Matrix<float,-1,1> features(static_cast<int>(kLidarSelfFeatureDim), 1);
+			features.setZero();
+			features(0, 0) = is_active(state, robot) ? 1.0f : 0.0f;
+			features(1, 0) = normalize_state_value(state(m_state_idxs[robot][0], 0), m_state_idxs[robot][0]);
+			features(2, 0) = normalize_state_value(state(m_state_idxs[robot][1], 0), m_state_idxs[robot][1]);
+			features(3, 0) = normalize_state_value(state(m_vel_idxs[robot][0], 0), m_vel_idxs[robot][0]);
+			features(4, 0) = normalize_state_value(state(m_vel_idxs[robot][1], 0), m_vel_idxs[robot][1]);
+			features(5, 0) = normalize_state_value(state(m_acc_idxs[robot][0], 0), m_acc_idxs[robot][0]);
+			features(6, 0) = normalize_state_value(state(m_acc_idxs[robot][1], 0), m_acc_idxs[robot][1]);
+			features(7, 0) = normalize_state_value(state(m_time_idx, 0), m_time_idx);
+			return features;
+		}
+
+		float ray_point_distance(
+			const Vec2f &origin,
+			const Vec2f &direction,
+			const Vec2f &point) const
+		{
+			const Vec2f rel = point - origin;
+			const float distance = rel.norm();
+			if (distance <= 1e-8f) {
+				return std::numeric_limits<float>::infinity();
+			}
+			const float projection = rel.dot(direction);
+			if (projection <= 0.0f) {
+				return std::numeric_limits<float>::infinity();
+			}
+			const float cross = direction(0) * rel(1) - direction(1) * rel(0);
+			const float angle = std::abs(std::atan2(cross, projection));
+			const float half_beam_width = lidar_pi() / static_cast<float>(kLidarNumBeams);
+			if (angle > half_beam_width + 1e-8f) {
+				return std::numeric_limits<float>::infinity();
+			}
+			return distance;
+		}
+
+		float ray_box_distance(
+			const Vec2f &origin,
+			const Vec2f &direction,
+			const Eigen::Matrix<float,2,2> &box) const
+		{
+			float t_min = -std::numeric_limits<float>::infinity();
+			float t_max = std::numeric_limits<float>::infinity();
+			for (int axis = 0; axis < 2; ++axis) {
+				const float low = box(axis, 0);
+				const float high = box(axis, 1);
+				if (std::abs(direction(axis)) < 1e-8f) {
+					if (origin(axis) < low || origin(axis) > high) {
+						return std::numeric_limits<float>::infinity();
+					}
+					continue;
+				}
+
+				float t1 = (low - origin(axis)) / direction(axis);
+				float t2 = (high - origin(axis)) / direction(axis);
+				if (t1 > t2) {
+					std::swap(t1, t2);
+				}
+				t_min = std::max(t_min, t1);
+				t_max = std::min(t_max, t2);
+				if (t_min > t_max) {
+					return std::numeric_limits<float>::infinity();
+				}
+			}
+			if (t_max < 0.0f) {
+				return std::numeric_limits<float>::infinity();
+			}
+			return (t_min >= 0.0f) ? t_min : t_max;
+		}
+
+		Eigen::Matrix<float,-1,1> semantic_lidar(
+			const Eigen::Matrix<float,-1,1> &state,
+			int robot) const
+		{
+			Eigen::Matrix<float,-1,1> lidar(
+				static_cast<int>(kLidarNumBeams * kLidarNumChannels), 1);
+			lidar.setOnes();
+			if (!is_active(state, robot)) {
+				return lidar;
+			}
+
+			const float max_range = lidar_max_range();
+			const Vec2f origin = state.block(m_state_idxs[robot][0], 0, 2, 1);
+			Eigen::Matrix<float,2,2> boundary;
+			boundary <<
+				m_state_lims(0, 0), m_state_lims(0, 1),
+				m_state_lims(1, 0), m_state_lims(1, 1);
+
+			for (int beam_idx = 0; beam_idx < kLidarNumBeams; ++beam_idx) {
+				const Vec2f &direction = m_lidar_directions[beam_idx];
+
+				float channel_distances[kLidarNumChannels] = {
+					max_range, max_range, max_range, max_range
+				};
+
+				for (int other_robot = 0; other_robot < m_num_robots; ++other_robot) {
+					if (other_robot == robot || !is_active(state, other_robot)) {
+						continue;
+					}
+					const Vec2f other_pos = state.block(m_state_idxs[other_robot][0], 0, 2, 1);
+					const float d = ray_point_distance(origin, direction, other_pos);
+					if (!std::isfinite(d) || d > max_range) {
+						continue;
+					}
+					const int channel = same_team(robot, other_robot) ? 0 : 1;
+					if (d < channel_distances[channel]) {
+						channel_distances[channel] = d;
+					}
+				}
+
+				for (const auto &obs : m_obstacles) {
+					const float d = ray_box_distance(origin, direction, obs);
+					if (std::isfinite(d) && d <= max_range && d < channel_distances[2]) {
+						channel_distances[2] = d;
+					}
+				}
+
+				const float boundary_d = ray_box_distance(origin, direction, boundary);
+				if (std::isfinite(boundary_d) && boundary_d <= max_range &&
+					boundary_d < channel_distances[3]) {
+					channel_distances[3] = boundary_d;
+				}
+
+				for (int higher_priority = 0; higher_priority < kLidarNumChannels; ++higher_priority) {
+					if (channel_distances[higher_priority] >= max_range) {
+						continue;
+					}
+					for (int lower_priority = higher_priority + 1;
+						lower_priority < kLidarNumChannels;
+						++lower_priority) {
+						if (std::abs(channel_distances[lower_priority] -
+							channel_distances[higher_priority]) <= 1e-8f) {
+							channel_distances[lower_priority] = max_range;
+						}
+					}
+				}
+
+				for (int channel = 0; channel < kLidarNumChannels; ++channel) {
+					const float normalized = channel_distances[channel] / max_range;
+					lidar(beam_idx * kLidarNumChannels + channel, 0) =
+						std::max(0.0f, std::min(1.0f, normalized));
+				}
+			}
+
+			return lidar;
+		}
 
 		float get_minco_horizon(float timestep) const {
 			return std::max(timestep, 1e-8f);
@@ -178,6 +363,12 @@ class Example8 : public Problem {
 			m_init_lims = problem_settings.init_lims;
 			m_dist = problem_settings.desired_distance;
 			m_obstacles = problem_settings.obstacles;
+			m_lidar_directions.resize(kLidarNumBeams);
+			for (int beam_idx = 0; beam_idx < kLidarNumBeams; ++beam_idx) {
+				const float theta = 2.0f * lidar_pi() * static_cast<float>(beam_idx) /
+					static_cast<float>(kLidarNumBeams);
+				m_lidar_directions[beam_idx] << std::cos(theta), std::sin(theta);
+			}
 
 			std::uniform_real_distribution<double> dist(0,1.0f); 
 
@@ -189,7 +380,7 @@ class Example8 : public Problem {
 			m_R.setIdentity();
 			m_R = m_R * m_state_control_weight;
 		}
-		bool is_active(const Eigen::Matrix<float,-1,1> &state, int robot) const {
+		bool is_active(const Eigen::Matrix<float,-1,1> &state, int robot) const override {
 			return state(m_active_idxs[robot], 0) > 0.5f;
 		}
 
@@ -399,6 +590,24 @@ class Example8 : public Problem {
 		bool is_captured(Eigen::Matrix<float,-1,1> state) {
         return !get_capture_pairs(state).empty();
         }
+
+		Eigen::Matrix<float,-1,1> policy_encoding(
+			Eigen::Matrix<float,-1,1> state,
+			int robot) override
+		{
+			Eigen::Matrix<float,-1,1> encoding(static_cast<int>(kPolicyEncodingDim), 1);
+			const auto self_features = self_lidar_features(state, robot);
+			const auto lidar_features = semantic_lidar(state, robot);
+			encoding.block(0, 0, kLidarSelfFeatureDim, 1) = self_features;
+			encoding.block(kLidarSelfFeatureDim, 0, kLidarNumBeams * kLidarNumChannels, 1) =
+				lidar_features;
+			return encoding;
+		}
+
+		Eigen::Matrix<float,-1,1> value_encoding(Eigen::Matrix<float,-1,1> state) override
+		{
+			return state;
+		}
 
 		Eigen::Matrix<float,-1,1> initialize(std::default_random_engine & gen)
 		{

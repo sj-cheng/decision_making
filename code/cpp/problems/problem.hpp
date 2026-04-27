@@ -149,6 +149,11 @@ public:
         return true;
     }
 
+    virtual bool is_active(const Eigen::Matrix<float,-1,1> &state, int robot) const
+    {
+        return true;
+    }
+
     virtual Eigen::Matrix<float,-1,1> policy_encoding(Eigen::Matrix<float,-1,1> state, int robot){
         return state;
     }

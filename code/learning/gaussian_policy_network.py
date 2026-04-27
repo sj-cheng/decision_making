@@ -12,7 +12,7 @@ class GaussianPolicyNetwork(torch.nn.Module):
 	def __init__(self,problem,robot,device="cpu",path=None):
 		super(GaussianPolicyNetwork, self).__init__()
 
-		h = 24
+		h = 64
 
 		self.encoding_dim = problem.policy_encoding_dim
 		self.output_dim = 2*len(problem.action_idxs[robot]) 
@@ -54,9 +54,6 @@ class GaussianPolicyNetwork(torch.nn.Module):
 
 
 	def forward(self,x,training=False):
-		x = x.clone()
-		if x.shape[1] > 8:
-			x[:,8] = 0 # zero out the last element of the encoding, which is the time encoding, to make the policy time-invariant.
 		dist = self.psi(x)
 		mu, logvar = torch.split(dist, 2, dim=1)
 
