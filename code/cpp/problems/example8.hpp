@@ -166,6 +166,7 @@ class Example8 : public Problem {
 				m_state_lims(0, 0), m_state_lims(0, 1),
 				m_state_lims(1, 0), m_state_lims(1, 1);
 
+			const float occlusion_eps = 1e-8f;
 			for (int beam_idx = 0; beam_idx < kLidarNumBeams; ++beam_idx) {
 				const Vec2f &direction = m_lidar_directions[beam_idx];
 
@@ -173,25 +174,26 @@ class Example8 : public Problem {
 					max_range, max_range, max_range, max_range
 				};
 
+				for (const auto &obs : m_obstacles) {
+					const float d = ray_box_distance(origin, direction, obs);
+					if (std::isfinite(d) && d <= max_range && d < channel_distances[2]) {
+						channel_distances[2] = d;
+					}
+				}
+
 				for (int other_robot = 0; other_robot < m_num_robots; ++other_robot) {
 					if (other_robot == robot || !is_active(state, other_robot)) {
 						continue;
 					}
 					const Vec2f other_pos = state.block(m_state_idxs[other_robot][0], 0, 2, 1);
 					const float d = ray_point_distance(origin, direction, other_pos);
-					if (!std::isfinite(d) || d > max_range) {
+					if (!std::isfinite(d) || d > max_range ||
+						d >= channel_distances[2] - occlusion_eps) {
 						continue;
 					}
 					const int channel = same_team(robot, other_robot) ? 0 : 1;
 					if (d < channel_distances[channel]) {
 						channel_distances[channel] = d;
-					}
-				}
-
-				for (const auto &obs : m_obstacles) {
-					const float d = ray_box_distance(origin, direction, obs);
-					if (std::isfinite(d) && d <= max_range && d < channel_distances[2]) {
-						channel_distances[2] = d;
 					}
 				}
 

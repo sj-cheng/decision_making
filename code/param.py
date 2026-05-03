@@ -21,7 +21,7 @@ class Param:
 		#dirname = "../current/historymodels/13_obstacle_stable"
 
 		n = 4 # num robots 
-		l =23 # learning iteration 
+		l =59 # learning iteration 
 		if oracles_on:
 			self.policy_oracle_paths = ["{}/model_policy_l{}_i{}.pt".format(dirname,l,i) for i in range(n)]	
 			self.value_oracle_path = "{}/model_value_l{}.pt".format(dirname,l)

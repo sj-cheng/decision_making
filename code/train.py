@@ -44,7 +44,7 @@ dirname = "../current/models"
 plot_on= False	
 # learning
 L = 80
-resume_training = False  # True: resume from existing models in dirname; False: start from scratch (clears models)
+resume_training = True  # True: resume from existing models in dirname; False: start from scratch (clears models)
 mode = 1 # 0: weighted sum, 1: best child, 2: subsamples 
 num_D_pi = 30000
 # num_D_pi = 500
@@ -322,7 +322,7 @@ def make_expert_demonstration_pi(problem,robot,policy_oracle,value_oracle):
 
 	paths = []
 	if parallel_on: 
-		ncpu = max(1, mp.cpu_count() - 18)
+		ncpu = max(1, mp.cpu_count() - 44 )
 		print("Total CPU:{}".format(ncpu))
 		worker_counts = split_work_count(num_D_pi, ncpu)
 
@@ -403,7 +403,7 @@ def make_expert_demonstration_pi_group(problem, robot_group, policy_oracle, valu
 
 	paths_by_worker = []
 	if parallel_on:
-		ncpu = max(1, mp.cpu_count() - 3)
+		ncpu = max(1, mp.cpu_count() - 25)
 		print("Total CPU:{}".format(ncpu))
 		worker_counts = split_work_count(num_D_pi, ncpu)
 

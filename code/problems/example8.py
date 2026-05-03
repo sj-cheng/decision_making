@@ -715,6 +715,13 @@ class Example8(Problem):
 			[self.state_lims[1, 0], self.state_lims[1, 1]],
 		], dtype=float)
 
+		for obstacle in self.obstacles:
+			distances = self.ray_box_distances(origin, self.lidar_directions, obstacle)
+			mask = np.isfinite(distances) & (distances <= max_range)
+			channel_distances[mask, 2] = np.minimum(channel_distances[mask, 2], distances[mask])
+
+		nearest_obstacle_distances = channel_distances[:, 2]
+		occlusion_eps = 1e-8
 		for other_robot in range(self.num_robots):
 			if other_robot == robot or not self.is_active(state, other_robot):
 				continue
@@ -725,16 +732,15 @@ class Example8(Problem):
 			projection = self.lidar_directions @ rel
 			cross = self.lidar_directions[:, 0] * rel[1] - self.lidar_directions[:, 1] * rel[0]
 			angles = np.abs(np.arctan2(cross, projection))
-			mask = (projection > 0.0) & (angles <= self.lidar_half_beam_width + 1e-8)
+			mask = (
+				(projection > 0.0)
+				& (angles <= self.lidar_half_beam_width + 1e-8)
+				& (distance < nearest_obstacle_distances - occlusion_eps)
+			)
 			if not np.any(mask):
 				continue
 			channel = 0 if self.same_team(robot, other_robot) else 1
 			channel_distances[mask, channel] = np.minimum(channel_distances[mask, channel], distance)
-
-		for obstacle in self.obstacles:
-			distances = self.ray_box_distances(origin, self.lidar_directions, obstacle)
-			mask = np.isfinite(distances) & (distances <= max_range)
-			channel_distances[mask, 2] = np.minimum(channel_distances[mask, 2], distances[mask])
 
 		distances = self.ray_box_distances(origin, self.lidar_directions, boundary)
 		mask = np.isfinite(distances) & (distances <= max_range)
