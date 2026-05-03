@@ -87,19 +87,13 @@ def init_tqdm(rank,total):
 	return pbar
 
 def update_tqdm(rank,total_per_worker,queue,pbar):
-	if pbar is None:
-		if queue is not None:
-			queue.put_nowait(total_per_worker)
-		return
 	if rank == 0:
 		count = total_per_worker
-		if queue is not None:
-			try:
-				while True:
-					count += queue.get_nowait()
-			except Empty:
-				pass
+		try:
+			while True:
+				count += queue.get_nowait()
+		except Empty:
+			pass
 		pbar.update(count)
 	else:
-		if queue is not None:
-			queue.put_nowait(total_per_worker)
+		queue.put_nowait(total_per_worker)

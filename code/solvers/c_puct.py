@@ -115,8 +115,6 @@ class C_PUCT(Solver):
 			problem_settings.desired_state = problem.s_des
 		elif problem.name == "example8":
 			problem_settings.desired_distance = problem.desired_distance
-			if hasattr(problem, 'obstacles'):
-				problem_settings.obstacles = problem.obstacles
 		elif problem.name in ["example9","example12"]:
 			problem_settings.desired_distance = problem.desired_distance
 			problem_settings.R = problem.R

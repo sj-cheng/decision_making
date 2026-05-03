@@ -7,8 +7,6 @@
 #include <eigen3/Eigen/Dense>
 #include "problem.hpp"
 #include <algorithm>
-#include <cmath>
-#include <limits>
 #include <utility>
 
 class Example8 : public Problem { 
@@ -28,320 +26,8 @@ class Example8 : public Problem {
 		int m_action_dim_per_robot;
 		int m_time_idx = 8;
 		std::vector<int> m_active_idxs = {9, 10, 11, 12};
-		std::vector<std::vector<int>> m_vel_idxs = {{13, 14}, {15, 16}, {17, 18}, {19, 20}};
-		std::vector<std::vector<int>> m_acc_idxs = {{21, 22}, {23, 24}, {25, 26}, {27, 28}};
 		std::vector<int> m_evaders = {0, 1};
 		std::vector<int> m_pursuers = {2, 3};
-		std::vector<Eigen::Matrix<float,2,2>> m_obstacles;
-
-	private:
-		using Vec2f = Eigen::Matrix<float,2,1>;
-		using Vec6f = Eigen::Matrix<float,6,1>;
-		using Mat6f = Eigen::Matrix<float,6,6>;
-		using Mat6x2f = Eigen::Matrix<float,6,2>;
-		enum {
-			kLidarNumBeams = 64,
-			kLidarNumChannels = 4,
-			kLidarSelfFeatureDim = 8,
-			kPolicyEncodingDim = kLidarSelfFeatureDim + kLidarNumBeams * kLidarNumChannels
-		};
-		std::vector<Vec2f> m_lidar_directions;
-
-		static constexpr float lidar_pi() {
-			return 3.14159265358979323846f;
-		}
-
-		bool same_team(int robot_a, int robot_b) const {
-			const bool a_evader = std::find(m_evaders.begin(), m_evaders.end(), robot_a) != m_evaders.end();
-			const bool b_evader = std::find(m_evaders.begin(), m_evaders.end(), robot_b) != m_evaders.end();
-			const bool a_pursuer = std::find(m_pursuers.begin(), m_pursuers.end(), robot_a) != m_pursuers.end();
-			const bool b_pursuer = std::find(m_pursuers.begin(), m_pursuers.end(), robot_b) != m_pursuers.end();
-			return (a_evader && b_evader) || (a_pursuer && b_pursuer);
-		}
-
-		float normalize_state_value(float value, int state_idx) const {
-			const float low = m_state_lims(state_idx, 0);
-			const float high = m_state_lims(state_idx, 1);
-			if (std::abs(high - low) < 1e-8f) {
-				return 0.0f;
-			}
-			return 2.0f * (value - low) / (high - low) - 1.0f;
-		}
-
-		float lidar_max_range() const {
-			const float x_extent = m_state_lims(0, 1) - m_state_lims(0, 0);
-			const float y_extent = m_state_lims(1, 1) - m_state_lims(1, 0);
-			return std::max(std::sqrt(x_extent * x_extent + y_extent * y_extent), 1e-8f);
-		}
-
-		Eigen::Matrix<float,-1,1> self_lidar_features(
-			const Eigen::Matrix<float,-1,1> &state,
-			int robot) const
-		{
-			Eigen::Matrix<float,-1,1> features(static_cast<int>(kLidarSelfFeatureDim), 1);
-			features.setZero();
-			features(0, 0) = is_active(state, robot) ? 1.0f : 0.0f;
-			features(1, 0) = normalize_state_value(state(m_state_idxs[robot][0], 0), m_state_idxs[robot][0]);
-			features(2, 0) = normalize_state_value(state(m_state_idxs[robot][1], 0), m_state_idxs[robot][1]);
-			features(3, 0) = normalize_state_value(state(m_vel_idxs[robot][0], 0), m_vel_idxs[robot][0]);
-			features(4, 0) = normalize_state_value(state(m_vel_idxs[robot][1], 0), m_vel_idxs[robot][1]);
-			features(5, 0) = normalize_state_value(state(m_acc_idxs[robot][0], 0), m_acc_idxs[robot][0]);
-			features(6, 0) = normalize_state_value(state(m_acc_idxs[robot][1], 0), m_acc_idxs[robot][1]);
-			features(7, 0) = normalize_state_value(state(m_time_idx, 0), m_time_idx);
-			return features;
-		}
-
-		float ray_point_distance(
-			const Vec2f &origin,
-			const Vec2f &direction,
-			const Vec2f &point) const
-		{
-			const Vec2f rel = point - origin;
-			const float distance = rel.norm();
-			if (distance <= 1e-8f) {
-				return std::numeric_limits<float>::infinity();
-			}
-			const float projection = rel.dot(direction);
-			if (projection <= 0.0f) {
-				return std::numeric_limits<float>::infinity();
-			}
-			const float cross = direction(0) * rel(1) - direction(1) * rel(0);
-			const float angle = std::abs(std::atan2(cross, projection));
-			const float half_beam_width = lidar_pi() / static_cast<float>(kLidarNumBeams);
-			if (angle > half_beam_width + 1e-8f) {
-				return std::numeric_limits<float>::infinity();
-			}
-			return distance;
-		}
-
-		float ray_box_distance(
-			const Vec2f &origin,
-			const Vec2f &direction,
-			const Eigen::Matrix<float,2,2> &box) const
-		{
-			float t_min = -std::numeric_limits<float>::infinity();
-			float t_max = std::numeric_limits<float>::infinity();
-			for (int axis = 0; axis < 2; ++axis) {
-				const float low = box(axis, 0);
-				const float high = box(axis, 1);
-				if (std::abs(direction(axis)) < 1e-8f) {
-					if (origin(axis) < low || origin(axis) > high) {
-						return std::numeric_limits<float>::infinity();
-					}
-					continue;
-				}
-
-				float t1 = (low - origin(axis)) / direction(axis);
-				float t2 = (high - origin(axis)) / direction(axis);
-				if (t1 > t2) {
-					std::swap(t1, t2);
-				}
-				t_min = std::max(t_min, t1);
-				t_max = std::min(t_max, t2);
-				if (t_min > t_max) {
-					return std::numeric_limits<float>::infinity();
-				}
-			}
-			if (t_max < 0.0f) {
-				return std::numeric_limits<float>::infinity();
-			}
-			return (t_min >= 0.0f) ? t_min : t_max;
-		}
-
-		Eigen::Matrix<float,-1,1> semantic_lidar(
-			const Eigen::Matrix<float,-1,1> &state,
-			int robot) const
-		{
-			Eigen::Matrix<float,-1,1> lidar(
-				static_cast<int>(kLidarNumBeams * kLidarNumChannels), 1);
-			lidar.setOnes();
-			if (!is_active(state, robot)) {
-				return lidar;
-			}
-
-			const float max_range = lidar_max_range();
-			const Vec2f origin = state.block(m_state_idxs[robot][0], 0, 2, 1);
-			Eigen::Matrix<float,2,2> boundary;
-			boundary <<
-				m_state_lims(0, 0), m_state_lims(0, 1),
-				m_state_lims(1, 0), m_state_lims(1, 1);
-
-			const float occlusion_eps = 1e-8f;
-			for (int beam_idx = 0; beam_idx < kLidarNumBeams; ++beam_idx) {
-				const Vec2f &direction = m_lidar_directions[beam_idx];
-
-				float channel_distances[kLidarNumChannels] = {
-					max_range, max_range, max_range, max_range
-				};
-
-				for (const auto &obs : m_obstacles) {
-					const float d = ray_box_distance(origin, direction, obs);
-					if (std::isfinite(d) && d <= max_range && d < channel_distances[2]) {
-						channel_distances[2] = d;
-					}
-				}
-
-				for (int other_robot = 0; other_robot < m_num_robots; ++other_robot) {
-					if (other_robot == robot || !is_active(state, other_robot)) {
-						continue;
-					}
-					const Vec2f other_pos = state.block(m_state_idxs[other_robot][0], 0, 2, 1);
-					const float d = ray_point_distance(origin, direction, other_pos);
-					if (!std::isfinite(d) || d > max_range ||
-						d >= channel_distances[2] - occlusion_eps) {
-						continue;
-					}
-					const int channel = same_team(robot, other_robot) ? 0 : 1;
-					if (d < channel_distances[channel]) {
-						channel_distances[channel] = d;
-					}
-				}
-
-				const float boundary_d = ray_box_distance(origin, direction, boundary);
-				if (std::isfinite(boundary_d) && boundary_d <= max_range &&
-					boundary_d < channel_distances[3]) {
-					channel_distances[3] = boundary_d;
-				}
-
-				for (int higher_priority = 0; higher_priority < kLidarNumChannels; ++higher_priority) {
-					if (channel_distances[higher_priority] >= max_range) {
-						continue;
-					}
-					for (int lower_priority = higher_priority + 1;
-						lower_priority < kLidarNumChannels;
-						++lower_priority) {
-						if (std::abs(channel_distances[lower_priority] -
-							channel_distances[higher_priority]) <= 1e-8f) {
-							channel_distances[lower_priority] = max_range;
-						}
-					}
-				}
-
-				for (int channel = 0; channel < kLidarNumChannels; ++channel) {
-					const float normalized = channel_distances[channel] / max_range;
-					lidar(beam_idx * kLidarNumChannels + channel, 0) =
-						std::max(0.0f, std::min(1.0f, normalized));
-				}
-			}
-
-			return lidar;
-		}
-
-		float get_minco_horizon(float timestep) const {
-			return std::max(timestep, 1e-8f);
-		}
-
-		std::pair<Vec2f, Vec2f> get_robot_action_bounds(int robot) const {
-			Vec2f lower;
-			Vec2f upper;
-			for (int ii = 0; ii < 2; ++ii) {
-				const int idx = m_action_idxs[robot][ii];
-				lower(ii) = m_action_lims(idx,0);
-				upper(ii) = m_action_lims(idx,1);
-			}
-			return {lower, upper};
-		}
-
-		std::pair<Vec2f, Vec2f> get_robot_velocity_bounds(int robot) const {
-			const float inv_dt = 1.0f / std::max(m_timestep, 1e-8f);
-			auto action_bounds = get_robot_action_bounds(robot);
-			return {action_bounds.first * inv_dt, action_bounds.second * inv_dt};
-		}
-
-		Vec6f construct_beta(float t, int rank) const {
-			Vec6f beta_t = Vec6f::Zero();
-			Vec6f beta_coeff = Vec6f::Zero();
-			beta_t(rank) = 1.0f;
-			for (int i = rank + 1; i < beta_t.size(); ++i) {
-				beta_t(i) = beta_t(i - 1) * t;
-			}
-			for (int i = rank; i < beta_coeff.size(); ++i) {
-				float coeff = 1.0f;
-				for (int j = 0; j < rank; ++j) {
-					coeff *= static_cast<float>(i - j);
-				}
-				beta_coeff(i) = coeff;
-			}
-			return beta_t.cwiseProduct(beta_coeff);
-		}
-
-		Mat6f construct_quintic_boundary_inverse(float horizon) const {
-			Mat6f mat;
-			int row = 0;
-			for (int endpoint = 0; endpoint < 2; ++endpoint) {
-				const float t = (endpoint == 0) ? 0.0f : horizon;
-				for (int rank = 0; rank < 3; ++rank) {
-					mat.row(row++) = construct_beta(t, rank).transpose();
-				}
-			}
-			return mat.inverse();
-		}
-
-		Mat6x2f solve_quintic_coeffs(
-			const Vec2f &p0,
-			const Vec2f &v0,
-			const Vec2f &a0,
-			const Vec2f &pT,
-			const Vec2f &vT,
-			const Vec2f &aT,
-			const Mat6f &boundary_inv) const
-		{
-			Mat6x2f q;
-			q.row(0) = p0.transpose();
-			q.row(1) = v0.transpose();
-			q.row(2) = a0.transpose();
-			q.row(3) = pT.transpose();
-			q.row(4) = vT.transpose();
-			q.row(5) = aT.transpose();
-			return boundary_inv * q;
-		}
-
-		std::pair<Vec2f, Vec2f> compute_feasible_command(
-			const Eigen::Matrix<float,-1,1> &state,
-			const Eigen::Matrix<float,-1,1> &action,
-			int robot) const
-		{
-			const Vec2f p0 = state.block(m_state_idxs[robot][0],0,2,1);
-			const Vec2f delta = action.block(m_action_idxs[robot][0],0,2,1);
-			const Vec2f p_cmd_raw = p0 + delta;
-			auto action_bounds = get_robot_action_bounds(robot);
-			const Vec2f delta_clipped = delta.cwiseMax(action_bounds.first).cwiseMin(action_bounds.second);
-			const Vec2f p_cmd_bounded = p0 + delta_clipped;
-			Vec2f position_lower;
-			Vec2f position_upper;
-			for (int ii = 0; ii < 2; ++ii) {
-				const int idx = m_state_idxs[robot][ii];
-				position_lower(ii) = m_state_lims(idx,0);
-				position_upper(ii) = m_state_lims(idx,1);
-			}
-			const Vec2f p_cmd_feasible = p_cmd_bounded.cwiseMax(position_lower).cwiseMin(position_upper);
-			return {p_cmd_raw, p_cmd_feasible};
-		}
-
-		Vec2f compute_terminal_velocity_ref(
-			const Vec2f &p0,
-			const Vec2f &p_cmd_feasible,
-			int robot,
-			float horizon) const
-		{
-			auto velocity_bounds = get_robot_velocity_bounds(robot);
-			const Vec2f desired_velocity = (p_cmd_feasible - p0) / std::max(horizon, 1e-8f);
-			return desired_velocity.cwiseMax(velocity_bounds.first).cwiseMin(velocity_bounds.second);
-		}
-
-		void evaluate_quintic(
-			const Mat6x2f &coeffs,
-			float t,
-			Vec2f &position,
-			Vec2f &velocity,
-			Vec2f &acceleration) const
-		{
-			position = coeffs.transpose() * construct_beta(t, 0);
-			velocity = coeffs.transpose() * construct_beta(t, 1);
-			acceleration = coeffs.transpose() * construct_beta(t, 2);
-		}
-
-	public:
 		void set_params(Problem_Settings & problem_settings) override 
 		{
             m_state_dim = problem_settings.state_dim;
@@ -364,13 +50,6 @@ class Example8 : public Problem {
 			m_action_lims = problem_settings.action_lims; 
 			m_init_lims = problem_settings.init_lims;
 			m_dist = problem_settings.desired_distance;
-			m_obstacles = problem_settings.obstacles;
-			m_lidar_directions.resize(kLidarNumBeams);
-			for (int beam_idx = 0; beam_idx < kLidarNumBeams; ++beam_idx) {
-				const float theta = 2.0f * lidar_pi() * static_cast<float>(beam_idx) /
-					static_cast<float>(kLidarNumBeams);
-				m_lidar_directions[beam_idx] << std::cos(theta), std::sin(theta);
-			}
 
 			std::uniform_real_distribution<double> dist(0,1.0f); 
 
@@ -382,38 +61,8 @@ class Example8 : public Problem {
 			m_R.setIdentity();
 			m_R = m_R * m_state_control_weight;
 		}
-		bool is_active(const Eigen::Matrix<float,-1,1> &state, int robot) const override {
+		bool is_active(const Eigen::Matrix<float,-1,1> &state, int robot) const {
 			return state(m_active_idxs[robot], 0) > 0.5f;
-		}
-
-		bool check_obstacle_collision(const Eigen::Matrix<float,-1,1> &state, int robot) const {
-			float x = state(m_state_idxs[robot][0], 0);
-			float y = state(m_state_idxs[robot][1], 0);
-			for (const auto &obs : m_obstacles) {
-				if (x >= obs(0,0) && x <= obs(0,1) && y >= obs(1,0) && y <= obs(1,1)) {
-					return true;
-				}
-			}
-			return false;
-		}
-
-		float obstacle_boundary_distance(const Vec2f &pos, const Eigen::Matrix<float,2,2> &obs) const {
-			const float x = pos(0);
-			const float y = pos(1);
-			const float dx = std::max({obs(0,0) - x, 0.0f, x - obs(0,1)});
-			const float dy = std::max({obs(1,0) - y, 0.0f, y - obs(1,1)});
-			return std::sqrt(dx * dx + dy * dy);
-		}
-
-		bool has_spawn_clearance(const Eigen::Matrix<float,-1,1> &state, int robot) const {
-			const Vec2f pos = state.block(m_state_idxs[robot][0], 0, 2, 1);
-			const float min_clearance = 1.0f * m_dist;
-			for (const auto &obs : m_obstacles) {
-				if (obstacle_boundary_distance(pos, obs) <= min_clearance) {
-					return false;
-				}
-			}
-			return true;
 		}
 
 		int active_evader_count(const Eigen::Matrix<float,-1,1> &state) const {
@@ -473,50 +122,34 @@ class Example8 : public Problem {
 			return result;
 		}
 
-		bool is_robot_state_valid(const Eigen::Matrix<float,-1,1> &state, int robot) const {
-			int s0 = m_state_idxs[robot][0];
-			int sd = static_cast<int>(m_state_idxs[robot].size());
-			bool in_low  = (state.block(s0,0,sd,1).array() >= m_state_lims.block(s0,0,sd,1).array()).all();
-			bool in_high = (state.block(s0,0,sd,1).array() <= m_state_lims.block(s0,1,sd,1).array()).all();
-
-			return in_low && in_high && !check_obstacle_collision(state, robot);
-		}
-
 		Eigen::Matrix<float,-1,1> step(
 			Eigen::Matrix<float,-1,1> state,
 			Eigen::Matrix<float,-1,1> action,
 			float timestep) override
 		{
-			Eigen::Matrix<float,-1,1> next_state = state;
+			Eigen::Matrix<float,-1,1> next_state(m_state_dim,1); 
 			Eigen::Matrix<float,2,2> Fd = m_I + m_Fc * timestep;
-			Eigen::Matrix<float,2,2> Bd = m_Bc * timestep;
+			Eigen::Matrix<float,2,2> Bd = m_Bc * timestep; 
 
+            // dynamics 
 			for (int ii = 0; ii < m_num_robots; ii++){
 				next_state(m_active_idxs[ii], 0) = state(m_active_idxs[ii], 0);
 				if (!is_active(state, ii)) {
-					next_state.block(m_state_idxs[ii][0],0,m_state_idxs[ii].size(),1) =
-						state.block(m_state_idxs[ii][0],0,m_state_idxs[ii].size(),1);
-					next_state.block(m_vel_idxs[ii][0],0,m_vel_idxs[ii].size(),1).setZero();
-					next_state.block(m_acc_idxs[ii][0],0,m_acc_idxs[ii].size(),1).setZero();
-					continue;
-					}
-				auto control = action.block(m_action_idxs[ii][0],0,2,1) / timestep;
-				next_state.block(m_state_idxs[ii][0],0,m_state_idxs[ii].size(),1) =
-					Fd * state.block(m_state_idxs[ii][0],0,m_state_idxs[ii].size(),1) +
-					Bd * control;
-				next_state.block(m_vel_idxs[ii][0],0,m_vel_idxs[ii].size(),1).setZero();
-				next_state.block(m_acc_idxs[ii][0],0,m_acc_idxs[ii].size(),1).setZero();
+            	next_state.block(m_state_idxs[ii][0],0,m_state_idxs[ii].size(),1) =
+            	    state.block(m_state_idxs[ii][0],0,m_state_idxs[ii].size(),1);
+           		continue;
 			}
+				auto control = action.block(m_action_idxs[ii][0],0,m_action_idxs[ii].size(),1) / timestep;
+                next_state.block(m_state_idxs[ii][0],0,m_state_idxs[ii].size(),1) = 
+                    Fd * state.block(m_state_idxs[ii][0],0,m_state_idxs[ii].size(),1) + 
+                    Bd * control;
+            }   
 
-            next_state(m_time_idx,0) = state(m_time_idx,0) + timestep;
+            next_state(8,0) = state(8,0) + timestep;
 			auto capture_pairs = get_capture_pairs(next_state);
 			for(auto &pe : capture_pairs) {
 				next_state(m_active_idxs[pe.first], 0) = 0.0f;
 				next_state(m_active_idxs[pe.second], 0) = 0.0f;
-				next_state.block(m_vel_idxs[pe.first][0],0,m_vel_idxs[pe.first].size(),1).setZero();
-				next_state.block(m_vel_idxs[pe.second][0],0,m_vel_idxs[pe.second].size(),1).setZero();
-				next_state.block(m_acc_idxs[pe.first][0],0,m_acc_idxs[pe.first].size(),1).setZero();
-				next_state.block(m_acc_idxs[pe.second][0],0,m_acc_idxs[pe.second].size(),1).setZero();
 			}
             return next_state;
 		}
@@ -546,7 +179,7 @@ class Example8 : public Problem {
 				r(0,0)=r1; r(1,0)=r1; r(2,0)=r2; r(3,0)=r2;
 			} 
             
-	            if ((state(m_time_idx,0) < m_tf) && (next_state(m_time_idx,0) >= m_tf)){
+            if ((state(m_time_idx,0) < m_tf) && (next_state(m_time_idx,0) >= m_tf)){
 				int surviving_evaders = active_evader_count(next_state);
 				for (int e : m_evaders) {
 					r(e,0) += 0.5f * surviving_evaders;
@@ -554,30 +187,19 @@ class Example8 : public Problem {
 			}
         
             for (int j=0; j<m_num_robots; ++j){
-                if (!is_robot_state_valid(next_state, j)) {
-                	if (std::find(m_evaders.begin(), m_evaders.end(), j) != m_evaders.end()) {
-                		for (int e : m_evaders) {
-                			r(e,0) = -1.0f;
-                		}
-                	} else {
-                		for (int p : m_pursuers) {
-                			r(p,0) = -1.0f;
-                		}
-                	}
-                }
+                int s0 = m_state_idxs[j][0];
+                int sd = (int)m_state_idxs[j].size();
+                bool in_low  = (next_state.block(s0,0,sd,1).array() >= m_state_lims.block(s0,0,sd,1).array()).all();
+                bool in_high = (next_state.block(s0,0,sd,1).array() <= m_state_lims.block(s0,1,sd,1).array()).all();
+                if (!(in_low && in_high)) r(j,0) = -1.0f;
             }
-
+		
 			return r;
         }
 
         bool is_valid(Eigen::Matrix<float,-1,1> state) override
         {
-            for (int j = 0; j < m_num_robots; ++j) {
-                if (!is_robot_state_valid(state, j)) {
-                    return false;
-                }
-            }
-            return true;
+            return (state.array() >= m_state_lims.col(0).array()).all() && (state.array() <= m_state_lims.col(1).array()).all();
         }
 
         bool is_terminal(Eigen::Matrix<float,-1,1> state) override 
@@ -589,49 +211,8 @@ class Example8 : public Problem {
             active_pursuer_count(state) == 0);
         }
 
-		bool is_captured(Eigen::Matrix<float,-1,1> state) {
+        bool is_captured(Eigen::Matrix<float,-1,1> state) {
         return !get_capture_pairs(state).empty();
         }
-
-		Eigen::Matrix<float,-1,1> policy_encoding(
-			Eigen::Matrix<float,-1,1> state,
-			int robot) override
-		{
-			Eigen::Matrix<float,-1,1> encoding(static_cast<int>(kPolicyEncodingDim), 1);
-			const auto self_features = self_lidar_features(state, robot);
-			const auto lidar_features = semantic_lidar(state, robot);
-			encoding.block(0, 0, kLidarSelfFeatureDim, 1) = self_features;
-			encoding.block(kLidarSelfFeatureDim, 0, kLidarNumBeams * kLidarNumChannels, 1) =
-				lidar_features;
-			return encoding;
-		}
-
-		Eigen::Matrix<float,-1,1> value_encoding(Eigen::Matrix<float,-1,1> state) override
-		{
-			return state;
-		}
-
-		Eigen::Matrix<float,-1,1> initialize(std::default_random_engine & gen)
-		{
-			Eigen::Matrix<float,-1,1> state(m_state_dim,1);
-			bool valid = false;
-			while (!valid) {
-				for (int ii = 0; ii < m_state_dim; ++ii) {
-					float alpha = dist(gen);
-					state(ii,0) = alpha * (m_init_lims(ii,1) - m_init_lims(ii,0)) + m_init_lims(ii,0);
-				}
-				valid = !is_terminal(state);
-				if (!valid) {
-					continue;
-				}
-				for (int robot = 0; robot < m_num_robots; ++robot) {
-					if (!has_spawn_clearance(state, robot)) {
-						valid = false;
-						break;
-					}
-				}
-			}
-			return state;
-		}
 		
 };

@@ -21,6 +21,9 @@ class GaussianPolicyNetwork : public PolicyNetwork {
 			int robot_action_dim = problem->m_action_idxs[robot].size();
 
 			Eigen::Matrix<float,-1,1> action(robot_action_dim); 
+			if (encoding.size() > 8) {
+				encoding(8, 0) = 0.0f;
+			}
 
 			auto distribution = m_phi.eval(encoding);
 			auto mu = distribution.block(0,0,robot_action_dim,1);

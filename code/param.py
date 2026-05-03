@@ -7,7 +7,7 @@ class Param:
 
 		# 
 		self.parallel_on = True
-		self.num_trials = 100 
+		self.num_trials = 200 
 
 		# names 
 		self.problem_name = "example8" # e.g. example1, example2, example3, ...
@@ -18,10 +18,12 @@ class Param:
 		# oracles 
 		oracles_on =True
 		dirname = "../current/models"
-		#dirname = "../current/historymodels/13_obstacle_stable"
+		#dirname = "/home/sjc/NTE/decision_making/current/models"
+		#dirname = "/home/ben/projects/decision_making/saved/example9"
+		# dirname = "/home/ben/projects/decision_making/saved/example6"
 
 		n = 4 # num robots 
-		l =59 # learning iteration 
+		l =39 # learning iteration 
 		if oracles_on:
 			self.policy_oracle_paths = ["{}/model_policy_l{}_i{}.pt".format(dirname,l,i) for i in range(n)]	
 			self.value_oracle_path = "{}/model_value_l{}.pt".format(dirname,l)
@@ -30,12 +32,8 @@ class Param:
 			self.value_oracle_path = None 
 
 		# settings
-		self.movie_on =False
-		self.pretty_plot_on = False
-		# Toggle dense MINCO diagnostic pages in run.pdf.
-		self.detailed_visualization_on = False
-		# True: MINCO quintic trajectory planning; False: direct displacement-to-velocity propagation
-		self.use_minco_dynamics = True
+		self.movie_on =False	
+		self.pretty_plot_on = True
 
 		# solver settings 
 		self.number_simulations = 1000

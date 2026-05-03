@@ -19,10 +19,6 @@ def make_instance(param):
 	instance = dict() 
 
 	problem = get_problem(param.problem_name)
-	if hasattr(problem, "set_visualization_detail"):
-		problem.set_visualization_detail(param.detailed_visualization_on)
-	if hasattr(param, 'use_minco_dynamics') and hasattr(problem, 'use_minco_dynamics'):
-		problem.use_minco_dynamics = param.use_minco_dynamics
 	policy_oracle,value_oracle = get_oracles(problem,
 		value_oracle_name = param.value_oracle_name,
 		value_oracle_path = param.value_oracle_path,
@@ -110,7 +106,7 @@ def run_instance(rank,queue,total,instance,verbose=False,tqdm_on=True):
 			curr_state = next_state
 
 	if verbose:	print('completed sim.')
-	if verbose: problem.render(states=np.array(states), actions=np.array(actions))
+	if verbose: problem.render(states=np.array(states))
 
 	sim_result = dict()
 	sim_result["instance"] = instance
@@ -141,8 +137,6 @@ if __name__ == '__main__':
 	if param.parallel_on:
 		pool = mp.Pool(mp.cpu_count() - 1)
 		params = [Param() for _ in range(param.num_trials)]
-		for worker_param in params:
-			worker_param.detailed_visualization_on = param.detailed_visualization_on
 		seeds = [np.random.randint(10000) for _ in range(param.num_trials)]
 		args = list(zip(
 			itertools.count(), 
@@ -169,10 +163,7 @@ if __name__ == '__main__':
 	print('plotting results...')
 	for sim_result in sim_results:
 		plotter.plot_sim_result(sim_result)
-		problem = sim_result["instance"]["problem"]
-		problem.render(states=sim_result["states"], actions=sim_result["actions"])
-		if param.detailed_visualization_on and hasattr(problem, "plot_run_diagnostics"):
-			problem.plot_run_diagnostics(sim_result)
+		sim_result["instance"]["problem"].render(states=sim_result["states"])
 		#if param.pretty_plot_on and hasattr(sim_result["instance"]["problem"], 'pretty_plot') :
 		#	sim_result["instance"]["problem"].pretty_plot(sim_result)
 
