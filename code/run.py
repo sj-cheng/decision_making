@@ -1,8 +1,11 @@
 
 # standard 
+import csv
 import numpy as np 
 import multiprocessing as mp
 import itertools
+import os
+import time as time_module
 from queue import Queue
 
 # custom 
@@ -14,7 +17,17 @@ import plotter
 from util import init_tqdm, update_tqdm
 
 
-def make_instance(param):
+def initialize_problem(problem, initial_seed=None):
+	if initial_seed is None:
+		return problem.initialize()
+	np_state = np.random.get_state()
+	np.random.seed(initial_seed)
+	initial_state = problem.initialize()
+	np.random.set_state(np_state)
+	return initial_state
+
+
+def make_instance(param, initial_seed=None):
 
 	instance = dict() 
 
@@ -36,13 +49,16 @@ def make_instance(param):
 		alpha_exp=param.alpha_exp,
 		beta_policy=param.beta_policy,
 		beta_value=param.beta_value,
-		vis_on=param.vis_on)
+		vis_on=param.vis_on,
+		team_methods=getattr(param, "team_methods", None),
+		team_method_settings=getattr(param, "team_method_settings", None))
 
 	instance["policy_oracle"] = policy_oracle
 	instance["value_oracle"] = value_oracle
 	instance["problem"] = problem 
 	instance["solver"] = solver 
-	instance["initial_state"] = problem.initialize()
+	instance["initial_state"] = initialize_problem(problem, initial_seed=initial_seed)
+	instance["initial_seed"] = initial_seed
 
 	# instance["initial_state"] = np.array([
 	# 	# [-1],[3], # state for single robot, 2d single integrator problems
@@ -59,7 +75,8 @@ def run_instance(rank,queue,total,instance,verbose=False,tqdm_on=True):
 	# outputs:
 	# 	- dict of sim result 
 
-	times, states, actions, observations, rewards = [],[],[],[],[]
+	times, states, actions, observations, rewards, decision_times = [],[],[],[],[],[]
+	team_decision_times = {"evaders": [], "pursuers": []}
 
 	if verbose:
 		print('   running sim with... \n\t{} \n\t{} \n\t{}'.format(\
@@ -82,7 +99,13 @@ def run_instance(rank,queue,total,instance,verbose=False,tqdm_on=True):
 
 		if verbose and not tqdm_on: print('\t\t t = {}/{}'.format(step,len(problem.times)))
 		
+		decision_start = time_module.perf_counter()
 		action = solver.policy(problem,curr_state)
+		decision_times.append(time_module.perf_counter() - decision_start)
+		for team_name, elapsed in getattr(solver, "last_team_decision_times", {}).items():
+			if team_name not in team_decision_times:
+				team_decision_times[team_name] = []
+			team_decision_times[team_name].append(elapsed)
 
 		dt = problem.dt 
 		if solver.solver_name in ["PUCT_V2","C_PUCT_V2"]:
@@ -114,19 +137,176 @@ def run_instance(rank,queue,total,instance,verbose=False,tqdm_on=True):
 	sim_result["states"] = np.array(states)
 	sim_result["actions"] = np.array(actions)
 	sim_result["rewards"] = np.array(rewards)
+	sim_result["decision_times"] = np.array(decision_times)
+	sim_result["team_decision_times"] = {
+		team_name: np.array(times)
+		for team_name, times in team_decision_times.items()
+	}
 
 	return sim_result
 
-def worker_run_instance(rank,queue,num_trials,param,seed):
-	np.random.seed(seed)
-	instance = make_instance(param)
+def make_trial_seeds(param, num_trials, name, random_max=2**31 - 1):
+	if getattr(param, "fixed_initial_conditions", True):
+		base_seed = int(getattr(param, name))
+		return [base_seed + trial for trial in range(num_trials)]
+	return [np.random.randint(random_max) for _ in range(num_trials)]
+
+
+def worker_run_instance(rank,queue,num_trials,param,initial_seed,run_seed):
+	np.random.seed(run_seed)
+	instance = make_instance(param, initial_seed=initial_seed)
+	instance["run_seed"] = run_seed
 	total = num_trials * len(instance["problem"].times)
 	sim_result = run_instance(rank,queue,total,instance)
+	sim_result["initial_seed"] = initial_seed
+	sim_result["run_seed"] = run_seed
 	del sim_result["instance"]["solver"] # can't pickle bindings 
 	return sim_result
 
 def _worker_run_instance(arg):
 	return worker_run_instance(*arg)
+
+
+def _safe_label(text):
+	return "".join(c if c.isalnum() or c in ["-", "_"] else "_" for c in str(text))
+
+
+def _team_method_label(param, method):
+	label = _safe_label(method)
+	if method not in ["search_only", "search_learning"]:
+		return label
+
+	method_settings = getattr(param, "team_method_settings", {}).get(method, {})
+	number_simulations = method_settings.get("number_simulations", None)
+	if number_simulations is None and method == "search_learning":
+		number_simulations = getattr(param, "number_simulations", None)
+	if number_simulations is None:
+		return label
+	return "{}-numsim{}".format(label, _safe_label(number_simulations))
+
+
+def get_run_label(param):
+	if getattr(param, "solver_name", None) == "MixedTeam":
+		team_methods = getattr(param, "team_methods", {})
+		evader_method = team_methods.get("evaders", "unknown")
+		pursuer_method = team_methods.get("pursuers", "unknown")
+		return "evaders-{}_pursuers-{}".format(
+			_team_method_label(param, evader_method),
+			_team_method_label(param, pursuer_method),
+		)
+	return _safe_label(getattr(param, "solver_name", "run"))
+
+
+def _state_matrix(states):
+	states = np.asarray(states, dtype=float)
+	if states.size == 0:
+		return np.empty((0, 0))
+	return states.reshape((states.shape[0], -1))
+
+
+def _reward_matrix(rewards):
+	rewards = np.asarray(rewards, dtype=float)
+	if rewards.size == 0:
+		return np.empty((0, 0))
+	return rewards.reshape((rewards.shape[0], -1))
+
+
+def _capture_stats(sim_result):
+	problem = sim_result["instance"]["problem"]
+	states = _state_matrix(sim_result["states"])
+	times = np.asarray(sim_result["times"], dtype=float)
+	if states.shape[0] == 0 or not hasattr(problem, "evaders") or not hasattr(problem, "active_idxs"):
+		return 0, None
+
+	initial_active = sum(states[0, problem.active_idxs[robot]] > 0.5 for robot in problem.evaders)
+	capture_count = int(initial_active - sum(states[-1, problem.active_idxs[robot]] > 0.5 for robot in problem.evaders))
+	capture_count = max(capture_count, 0)
+	first_capture_time = None
+	for i_state, state in enumerate(states):
+		active_count = sum(state[problem.active_idxs[robot]] > 0.5 for robot in problem.evaders)
+		if active_count < initial_active:
+			first_capture_time = float(times[i_state]) if i_state < len(times) else float(i_state)
+			break
+	return capture_count, first_capture_time
+
+
+def summarize_results(sim_results, param):
+	num_trials = len(sim_results)
+	team_methods = getattr(param, "team_methods", {})
+	capture_counts = []
+	success_capture_times = []
+	pursuer_returns = []
+	decision_times = []
+	evader_decision_times = []
+	pursuer_decision_times = []
+
+	for sim_result in sim_results:
+		problem = sim_result["instance"]["problem"]
+		capture_count, first_capture_time = _capture_stats(sim_result)
+		capture_counts.append(capture_count)
+		if capture_count > 0 and first_capture_time is not None:
+			success_capture_times.append(first_capture_time)
+
+		rewards = _reward_matrix(sim_result["rewards"])
+		if rewards.shape[0] > 0 and hasattr(problem, "pursuers"):
+			pursuer_idxs = [robot for robot in problem.pursuers if robot < rewards.shape[1]]
+			if len(pursuer_idxs) > 0:
+				pursuer_returns.append(float(np.sum(rewards[:, pursuer_idxs])))
+
+		decision_times.extend(np.asarray(sim_result.get("decision_times", []), dtype=float).reshape(-1).tolist())
+		team_decision_times = sim_result.get("team_decision_times", {})
+		evader_decision_times.extend(
+			np.asarray(team_decision_times.get("evaders", []), dtype=float).reshape(-1).tolist()
+		)
+		pursuer_decision_times.extend(
+			np.asarray(team_decision_times.get("pursuers", []), dtype=float).reshape(-1).tolist()
+		)
+
+	capture_counts = np.asarray(capture_counts, dtype=float)
+	return {
+		"evader_method": team_methods.get("evaders", ""),
+		"pursuer_method": team_methods.get("pursuers", ""),
+		"num_trials": num_trials,
+		"fixed_initial_conditions": getattr(param, "fixed_initial_conditions", ""),
+		"initial_seed": getattr(param, "initial_seed", ""),
+		"run_seed": getattr(param, "run_seed", ""),
+		"capture_success_rate": float(np.mean(capture_counts > 0)) if num_trials > 0 else 0.0,
+		"capture_one_success_rate": float(np.mean(capture_counts == 1)) if num_trials > 0 else 0.0,
+		"capture_two_success_rate": float(np.mean(capture_counts >= 2)) if num_trials > 0 else 0.0,
+		"avg_capture_count": float(np.mean(capture_counts)) if num_trials > 0 else 0.0,
+		"avg_success_capture_time": float(np.mean(success_capture_times)) if len(success_capture_times) > 0 else np.nan,
+		"avg_pursuer_team_return": float(np.mean(pursuer_returns)) if len(pursuer_returns) > 0 else np.nan,
+		"avg_step_decision_time_s": float(np.mean(decision_times)) if len(decision_times) > 0 else np.nan,
+		"avg_evader_step_decision_time_s": float(np.mean(evader_decision_times)) if len(evader_decision_times) > 0 else np.nan,
+		"avg_pursuer_step_decision_time_s": float(np.mean(pursuer_decision_times)) if len(pursuer_decision_times) > 0 else np.nan,
+	}
+
+
+def save_summary_csv(summary, filename):
+	file_dir, _ = os.path.split(filename)
+	if len(file_dir) > 0 and not os.path.isdir(file_dir):
+		os.makedirs(file_dir)
+	fieldnames = [
+		"evader_method",
+		"pursuer_method",
+		"num_trials",
+		"fixed_initial_conditions",
+		"initial_seed",
+		"run_seed",
+		"capture_success_rate",
+		"capture_one_success_rate",
+		"capture_two_success_rate",
+		"avg_capture_count",
+		"avg_success_capture_time",
+		"avg_pursuer_team_return",
+		"avg_step_decision_time_s",
+		"avg_evader_step_decision_time_s",
+		"avg_pursuer_step_decision_time_s",
+	]
+	with open(filename, "w", newline="") as f:
+		writer = csv.DictWriter(f, fieldnames=fieldnames)
+		writer.writeheader()
+		writer.writerow(summary)
 
 
 if __name__ == '__main__':
@@ -137,19 +317,27 @@ if __name__ == '__main__':
 	if param.parallel_on:
 		pool = mp.Pool(mp.cpu_count() - 1)
 		params = [Param() for _ in range(param.num_trials)]
-		seeds = [np.random.randint(10000) for _ in range(param.num_trials)]
+		initial_seeds = make_trial_seeds(param, param.num_trials, "initial_seed")
+		run_seeds = make_trial_seeds(param, param.num_trials, "run_seed")
 		args = list(zip(
 			itertools.count(), 
 			itertools.repeat(mp.Manager().Queue()),
 			itertools.repeat(param.num_trials),
-			params,seeds))
+			params,initial_seeds,run_seeds))
 		sim_results = pool.imap_unordered(_worker_run_instance, args)
 		# sim_results = pool.map(_worker, args)
 		pool.close()
 		pool.join()
+		sim_results = list(sim_results)
 	else:
-		instance = make_instance(param)
+		initial_seed = make_trial_seeds(param, 1, "initial_seed")[0]
+		run_seed = make_trial_seeds(param, 1, "run_seed")[0]
+		np.random.seed(run_seed)
+		instance = make_instance(param, initial_seed=initial_seed)
+		instance["run_seed"] = run_seed
 		sim_results = [run_instance(0,Queue(),len(instance["problem"].times),instance,verbose=True)]
+		sim_results[0]["initial_seed"] = initial_seed
+		sim_results[0]["run_seed"] = run_seed
 
 	if param.movie_on: 
 		print('making movie...')
@@ -161,11 +349,17 @@ if __name__ == '__main__':
 
 	# plotting 
 	print('plotting results...')
+	run_label = get_run_label(param)
 	for sim_result in sim_results:
 		plotter.plot_sim_result(sim_result)
 		sim_result["instance"]["problem"].render(states=sim_result["states"])
 		#if param.pretty_plot_on and hasattr(sim_result["instance"]["problem"], 'pretty_plot') :
 		#	sim_result["instance"]["problem"].pretty_plot(sim_result)
 
-	plotter.save_figs("../current/plots/run.pdf")
-	plotter.open_figs("../current/plots/run.pdf")
+	plot_path = "../current/plots/run_{}.pdf".format(run_label)
+	summary_path = "../current/plots/summary_{}.csv".format(run_label)
+	summary = summarize_results(sim_results, param)
+	save_summary_csv(summary, summary_path)
+	plotter.save_figs(plot_path)
+	plotter.open_figs(plot_path)
+	print("saved summary to {}".format(summary_path))

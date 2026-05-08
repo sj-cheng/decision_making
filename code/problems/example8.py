@@ -72,10 +72,10 @@ class Example8(Problem):
 			))
 		self.approx_dist = (self.state_lims[0,1] - self.state_lims[0,0])/10 
 
-		self.evader_speed_lim_range = (1.4, 2.6)
-		self.pursuer_speed_lim_range = (1.4, 2.6)
-		self.current_evader_speed_lim = 2.0
-		self.current_pursuer_speed_lim = 2.0
+		self.evader_speed_lim_range = (1.0, 1.0)
+		self.pursuer_speed_lim_range = (1.0, 1.0)
+		self.current_evader_speed_lim = 1.0
+		self.current_pursuer_speed_lim = 1.0
 
 		self.update_action_lims()
 
@@ -118,6 +118,14 @@ class Example8(Problem):
 		# 	(-1.0,1.0),
 		# 	))
 
+		# self.init_lims = np.array((
+		# 	(-8,8), (-8,8),
+		# 	(-8,8), (-8,8),
+		# 	(-8,8), (-8,8),
+		# 	(-8,8), (-8,8),
+		# 	(0,0),
+		# 	(1,1), (1,1), (1,1), (1,1),
+		# 	))
 		self.init_lims = np.array((
 			(-8,8), (-8,8),
 			(-8,8), (-8,8),
@@ -126,7 +134,6 @@ class Example8(Problem):
 			(0,0),
 			(1,1), (1,1), (1,1), (1,1),
 			))
-
 		self.Fc = np.array((
 			(0,0), 
 			(0,0), 
@@ -344,6 +351,16 @@ class Example8(Problem):
 				robot_state_idxs = self.state_idxs[robot] 
 
 				ax.plot(states[:,robot_state_idxs[0]], states[:,robot_state_idxs[1]], color=colors[robot])
+				ax.plot(
+					states[:,robot_state_idxs[0]],
+					states[:,robot_state_idxs[1]],
+					linestyle='None',
+					marker='o',
+					markerfacecolor='none',
+					markeredgecolor=colors[robot],
+					markeredgewidth=0.8,
+					markersize=3,
+				)
 				ax.plot(states[0,robot_state_idxs[0]], states[0,robot_state_idxs[1]], color=colors[robot],marker='o')
 				ax.plot(states[-1,robot_state_idxs[0]], states[-1,robot_state_idxs[1]], color=colors[robot],marker='s')
 				

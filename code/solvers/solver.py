@@ -21,7 +21,9 @@ def get_solver(solver_name,
 				alpha_exp=0.25,
 				beta_policy=0.0,
 				beta_value=1.0,
-				vis_on=False):
+				vis_on=False,
+				team_methods=None,
+				team_method_settings=None):
 
 	if solver_name == "Empty": 
 		from solvers.empty import Empty
@@ -86,6 +88,29 @@ def get_solver(solver_name,
 	elif solver_name == "NeuralNetwork":
 		from solvers.policy_solver import PolicySolver
 		solver = PolicySolver(policy_oracle=policy_oracle)
+
+	elif solver_name == "Random":
+		from solvers.random_solver import RandomSolver
+		solver = RandomSolver()
+
+	elif solver_name == "MixedTeam":
+		from solvers.mixed_team_solver import MixedTeamSolver
+		solver = MixedTeamSolver(
+			policy_oracle=policy_oracle,
+			value_oracle=value_oracle,
+			team_methods=team_methods,
+			team_method_settings=team_method_settings,
+			search_depth=search_depth,
+			number_simulations=number_simulations,
+			C_pw=C_pw,
+			alpha_pw=alpha_pw,
+			C_exp=C_exp,
+			alpha_exp=alpha_exp,
+			beta_policy=beta_policy,
+			beta_value=beta_value,
+			vis_on=vis_on,
+			c_puct_solver_name="C_PUCT_V1",
+			)
 
 	elif solver_name in ["C_PUCT_V0","C_PUCT_V1","C_PUCT_V2"]: 
 		from solvers.c_puct import C_PUCT

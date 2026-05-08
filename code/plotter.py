@@ -74,45 +74,258 @@ def get_n_colors(n,cmap=None):
 	return colors
 
 
+def _get_problem_attr(problem, name, default=None):
+	if isinstance(problem, dict):
+		return problem.get(name, default)
+	return getattr(problem, name, default)
+
+
+def _as_time_matrix(data, expected_width=None):
+	arr = np.asarray(data, dtype=float)
+	if arr.size == 0:
+		width = 0 if expected_width is None else expected_width
+		return np.empty((0, width))
+	if arr.ndim == 0:
+		return arr.reshape((1, 1))
+	if arr.ndim == 1:
+		if expected_width is not None and arr.size == expected_width:
+			return arr.reshape((1, expected_width))
+		return arr.reshape((-1, 1))
+	return arr.reshape((arr.shape[0], -1))
+
+
+def _robot_label(problem, robot):
+	evaders = list(_get_problem_attr(problem, "evaders", []))
+	pursuers = list(_get_problem_attr(problem, "pursuers", []))
+	if robot in evaders:
+		if len(evaders) == 1:
+			return "Evader"
+		return "Evader {}".format(evaders.index(robot) + 1)
+	if robot in pursuers:
+		if len(pursuers) == 1:
+			return "Pursuer"
+		return "Pursuer {}".format(pursuers.index(robot) + 1)
+	return "Robot {}".format(robot)
+
+
+def _robot_position_indices(problem, robot):
+	state_idxs = _get_problem_attr(problem, "state_idxs", [])
+	if robot >= len(state_idxs):
+		return np.array([], dtype=int)
+	robot_state_idxs = np.asarray(state_idxs[robot], dtype=int)
+	position_idx = np.asarray(
+		_get_problem_attr(problem, "position_idx", np.arange(min(2, len(robot_state_idxs)))),
+		dtype=int,
+	).reshape(-1)
+	position_idx = position_idx[position_idx < len(robot_state_idxs)]
+	return robot_state_idxs[position_idx]
+
+
+def _min_cross_team_distances(problem, states):
+	evaders = list(_get_problem_attr(problem, "evaders", []))
+	pursuers = list(_get_problem_attr(problem, "pursuers", []))
+	if len(evaders) == 0 or len(pursuers) == 0 or states.shape[0] == 0:
+		return None
+
+	distances = []
+	for state in states:
+		min_dist = np.inf
+		for evader in evaders:
+			evader_idxs = _robot_position_indices(problem, evader)
+			if len(evader_idxs) == 0:
+				continue
+			for pursuer in pursuers:
+				pursuer_idxs = _robot_position_indices(problem, pursuer)
+				num_dims = min(len(evader_idxs), len(pursuer_idxs))
+				if num_dims == 0:
+					continue
+				dist = np.linalg.norm(state[evader_idxs[:num_dims]] - state[pursuer_idxs[:num_dims]])
+				min_dist = min(min_dist, dist)
+		if np.isfinite(min_dist):
+			distances.append(min_dist)
+
+	if len(distances) != states.shape[0]:
+		return None
+	return np.asarray(distances)
+
+
+def _reward_groups(problem, num_robots):
+	evaders = [robot for robot in list(_get_problem_attr(problem, "evaders", [])) if robot < num_robots]
+	pursuers = [robot for robot in list(_get_problem_attr(problem, "pursuers", [])) if robot < num_robots]
+	if len(evaders) > 0 or len(pursuers) > 0:
+		groups = []
+		if len(evaders) > 0:
+			groups.append(("Evader team", evaders))
+		if len(pursuers) > 0:
+			groups.append(("Pursuer team", pursuers))
+		return groups
+	return [(_robot_label(problem, robot), [robot]) for robot in range(num_robots)]
+
+
+def _style_summary_axis(ax):
+	ax.grid(True, color="0.88", linewidth=0.7)
+	ax.spines["top"].set_visible(False)
+	ax.spines["right"].set_visible(False)
+	ax.tick_params(labelsize=8)
+	ax.title.set_fontsize(9)
+	ax.xaxis.label.set_fontsize(8)
+	ax.yaxis.label.set_fontsize(8)
+
+
 def plot_sim_result(sim_result):
 	times = sim_result["times"] # nt, 
-	states = sim_result["states"] # nt x state_dim
-	actions = sim_result["actions"] # nt-1 x action_dim
-	rewards = sim_result["rewards"] # nt-1,x num_robots
+	raw_states = sim_result["states"] # nt x state_dim
+	raw_actions = sim_result["actions"] # nt-1 x action_dim
+	raw_rewards = sim_result["rewards"] # nt-1,x num_robots
 	problem = sim_result["instance"]["problem"] 
-	problem = problem.__dict__ 
+	times = np.asarray(times, dtype=float).reshape(-1)
 
-	num_robots = problem["num_robots"]
-	robot_state_dims = [len(robot_state_idx) for robot_state_idx in problem["state_idxs"]]
-	action_dim = np.shape(actions)[1]
-	state_lims = problem["state_lims"]
-	action_lims = problem["action_lims"]
+	num_robots = int(_get_problem_attr(problem, "num_robots", 1))
+	state_lims = np.asarray(_get_problem_attr(problem, "state_lims", []))
+	action_lims = np.asarray(_get_problem_attr(problem, "action_lims", []))
+	action_dim = action_lims.shape[0] if action_lims.ndim == 2 else None
+	states = _as_time_matrix(raw_states, state_lims.shape[0] if state_lims.ndim == 2 else None)
+	actions = _as_time_matrix(raw_actions, action_dim)
+	rewards = _as_time_matrix(raw_rewards, num_robots)
+	action_times = times[1:1 + actions.shape[0]]
+	reward_times = times[1:1 + rewards.shape[0]]
 
-	ncols = np.max((np.max(robot_state_dims),action_dim,2,num_robots+1))
+	colors = get_n_colors(num_robots)
+	labels = [_robot_label(problem, robot) for robot in range(num_robots)]
+	panels = []
 
-	# plot trajectories (over time)
-	fig,axs = plt.subplots(nrows=int(num_robots+2),ncols=int(ncols))
-	# state 
-	for i_robot in range(num_robots):
-		robot_state_idx = problem["state_idxs"][i_robot]
-		for i_ax,i_state in enumerate(robot_state_idx):
-			axs[i_robot,i_ax].plot(times,states[:,i_state])
-			axs[i_robot,i_ax].set_ylim((state_lims[i_state,0],state_lims[i_state,1]))
-		axs[i_robot,0].set_ylabel("Robot State {}".format(i_robot))
+	position_idx = np.asarray(_get_problem_attr(problem, "position_idx", np.arange(2)), dtype=int).reshape(-1)
+	position_names = ["x", "y", "z"]
+	num_position_panels = min(len(position_idx), 3)
+	for local_position_dim in range(num_position_panels):
+		def plot_position(ax, local_position_dim=local_position_dim):
+			for robot in range(num_robots):
+				position_state_idxs = _robot_position_indices(problem, robot)
+				if local_position_dim >= len(position_state_idxs):
+					continue
+				state_idx = position_state_idxs[local_position_dim]
+				if state_idx >= states.shape[1]:
+					continue
+				ax.plot(
+					times,
+					states[:, state_idx],
+					color=colors[robot],
+					label=labels[robot],
+					linewidth=1.7,
+				)
+			component = position_names[local_position_dim] if local_position_dim < len(position_names) else "p{}".format(local_position_dim)
+			ax.set_title("{} position".format(component))
+			ax.set_ylabel(component)
+			ax.set_xlabel("time")
+			if state_lims.ndim == 2 and position_idx[local_position_dim] < state_lims.shape[0]:
+				lims = state_lims[position_idx[local_position_dim], :]
+				if np.all(np.isfinite(lims)):
+					ax.set_ylim((lims[0], lims[1]))
+			ax.legend(loc="best", frameon=False, fontsize=7, ncol=2)
+		panels.append(plot_position)
 
-	# action
-	for i_action in range(action_dim):
-		axs[num_robots,i_action].plot(times[1:],actions[:,i_action])
-		axs[num_robots,i_action].set_ylim((action_lims[i_action,0],action_lims[i_action,1]))
-	axs[num_robots,0].set_ylabel("Actions")
+	if actions.shape[0] > 0:
+		def plot_action_norm(ax):
+			action_idxs = _get_problem_attr(problem, "action_idxs", [])
+			for robot in range(num_robots):
+				if robot >= len(action_idxs):
+					continue
+				robot_action_idxs = np.asarray(action_idxs[robot], dtype=int)
+				robot_action_idxs = robot_action_idxs[robot_action_idxs < actions.shape[1]]
+				if len(robot_action_idxs) == 0:
+					continue
+				action_norm = np.linalg.norm(actions[:, robot_action_idxs], axis=1)
+				ax.plot(
+					action_times,
+					action_norm,
+					color=colors[robot],
+					label=labels[robot],
+					linewidth=1.7,
+				)
+			ax.set_title("control magnitude")
+			ax.set_ylabel(r"$\|u\|$")
+			ax.set_xlabel("time")
+			ax.legend(loc="best", frameon=False, fontsize=7, ncol=2)
+		panels.append(plot_action_norm)
 
-	# reward 
-	for i_robot in range(num_robots):
-		axs[num_robots+1,0].plot(times[1:],rewards[:,i_robot])
-		axs[num_robots+1,1].plot(times[1:],np.cumsum(rewards[:,i_robot]))
-	axs[num_robots+1,0].set_ylabel("Rewards")
+	min_distances = _min_cross_team_distances(problem, states)
+	if min_distances is not None:
+		def plot_min_distance(ax):
+			ax.plot(times, min_distances, color="0.15", linewidth=1.9, label="min E-P distance")
+			desired_distance = _get_problem_attr(problem, "desired_distance", None)
+			if desired_distance is not None:
+				ax.axhline(
+					desired_distance,
+					color="0.55",
+					linestyle="--",
+					linewidth=1.0,
+					label="capture radius",
+				)
+			ax.set_title("minimum separation")
+			ax.set_ylabel("distance")
+			ax.set_xlabel("time")
+			ax.legend(loc="best", frameon=False, fontsize=7)
+		panels.append(plot_min_distance)
 
-	# fig.tight_layout()
+	if rewards.shape[0] > 0:
+		reward_groups = _reward_groups(problem, min(num_robots, rewards.shape[1]))
+
+		def plot_reward(ax):
+			for i_group, (label, robot_idxs) in enumerate(reward_groups):
+				robot_idxs = [robot for robot in robot_idxs if robot < rewards.shape[1]]
+				if len(robot_idxs) == 0:
+					continue
+				group_reward = np.mean(rewards[:, robot_idxs], axis=1)
+				ax.plot(
+					reward_times,
+					group_reward,
+					color=colors[i_group % len(colors)],
+					label=label,
+					linewidth=1.7,
+				)
+			ax.set_title("instant reward")
+			ax.set_ylabel("reward")
+			ax.set_xlabel("time")
+			ax.legend(loc="best", frameon=False, fontsize=7)
+		panels.append(plot_reward)
+
+		def plot_cumulative_reward(ax):
+			for i_group, (label, robot_idxs) in enumerate(reward_groups):
+				robot_idxs = [robot for robot in robot_idxs if robot < rewards.shape[1]]
+				if len(robot_idxs) == 0:
+					continue
+				group_reward = np.mean(rewards[:, robot_idxs], axis=1)
+				ax.plot(
+					reward_times,
+					np.cumsum(group_reward),
+					color=colors[i_group % len(colors)],
+					label=label,
+					linewidth=1.7,
+				)
+			ax.set_title("cumulative reward")
+			ax.set_ylabel("return")
+			ax.set_xlabel("time")
+			ax.legend(loc="best", frameon=False, fontsize=7)
+		panels.append(plot_cumulative_reward)
+
+	if len(panels) == 0:
+		return
+
+	ncols = 2 if len(panels) > 1 else 1
+	nrows = int(math.ceil(len(panels) / ncols))
+	fig,axs = plt.subplots(
+		nrows=nrows,
+		ncols=ncols,
+		figsize=(7.2, max(2.2, 2.05 * nrows)),
+		squeeze=False,
+		constrained_layout=True,
+	)
+	axs = axs.reshape(-1)
+	for ax, panel in zip(axs, panels):
+		panel(ax)
+		_style_summary_axis(ax)
+	for ax in axs[len(panels):]:
+		fig.delaxes(ax)
 
 
 def plot_loss(losses):
