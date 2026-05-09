@@ -7,7 +7,7 @@ class Param:
 
 		# 
 		self.parallel_on = True
-		self.num_trials = 100 
+		self.num_trials = 50
 
 		# names 
 		self.problem_name = "example8" # e.g. example1, example2, example3, ...
@@ -17,7 +17,7 @@ class Param:
 
 		# oracles 
 		oracles_on =True
-		dirname = "../current/models"
+		dirname = "../current/historymodels/18_lidar_2obstacle"
 		#dirname = "../current/historymodels/13_obstacle_stable"
 
 		n = 4 # num robots 
@@ -31,9 +31,9 @@ class Param:
 
 		# settings
 		self.movie_on =False
-		self.pretty_plot_on = False
+		self.pretty_plot_on = True
 		# Toggle dense MINCO diagnostic pages in run.pdf.
-		self.detailed_visualization_on = False
+		self.detailed_visualization_on = True
 		# True: MINCO quintic trajectory planning; False: direct displacement-to-velocity propagation
 		self.use_minco_dynamics = True
 
@@ -44,8 +44,8 @@ class Param:
 		self.alpha_pw = 0.5						# 访问次数增加时，子节点上限增长有多块 
 		self.C_exp = 1.0						# 探索项的权重，越大越倾向于探索
 		self.alpha_exp = 0.25					# 控制探索奖励随 N_parent 增长的速度
-		self.beta_policy = 1					# 节点使用策略网络的概率
-		self.beta_value = 1					# 使用价值网络的概率
+		self.beta_policy = 0.95					# 节点使用策略网络的概率
+		self.beta_value = 0.05			# 使用价值网络的概率
 		self.vis_on = False
 
 	def to_dict(self):

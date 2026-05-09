@@ -79,8 +79,11 @@ def plot_sim_result(sim_result):
 	states = sim_result["states"] # nt x state_dim
 	actions = sim_result["actions"] # nt-1 x action_dim
 	rewards = sim_result["rewards"] # nt-1,x num_robots
-	problem = sim_result["instance"]["problem"] 
-	problem = problem.__dict__ 
+	problem_obj = sim_result["instance"]["problem"]
+	if hasattr(problem_obj, "plot_sim_result_summary"):
+		problem_obj.plot_sim_result_summary(sim_result)
+		return
+	problem = problem_obj.__dict__ 
 
 	num_robots = problem["num_robots"]
 	robot_state_dims = [len(robot_state_idx) for robot_state_idx in problem["state_idxs"]]

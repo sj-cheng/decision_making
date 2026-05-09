@@ -23,6 +23,7 @@ class Example8 : public Problem {
 		float m_r_min; 
 		float m_state_control_weight;
 		float m_dist;
+		float m_evader_distance_reward_weight;
 		float m_tf;
 		int m_state_dim_per_robot; 
 		int m_action_dim_per_robot;
@@ -364,6 +365,7 @@ class Example8 : public Problem {
 			m_action_lims = problem_settings.action_lims; 
 			m_init_lims = problem_settings.init_lims;
 			m_dist = problem_settings.desired_distance;
+			m_evader_distance_reward_weight = problem_settings.evader_distance_reward_weight;
 			m_obstacles = problem_settings.obstacles;
 			m_lidar_directions.resize(kLidarNumBeams);
 			for (int beam_idx = 0; beam_idx < kLidarNumBeams; ++beam_idx) {
@@ -430,6 +432,42 @@ class Example8 : public Problem {
 				if (is_active(state, p)) cnt++;
 			}
 			return cnt;
+		}
+
+		float nearest_active_pursuer_distance(
+			const Eigen::Matrix<float,-1,1> &state,
+			int evader) const
+		{
+			if (!is_active(state, evader)) {
+				return std::numeric_limits<float>::infinity();
+			}
+			float nearest = std::numeric_limits<float>::infinity();
+			const Vec2f evader_pos = state.block(m_state_idxs[evader][0], 0, 2, 1);
+			for (int p : m_pursuers) {
+				if (!is_active(state, p)) {
+					continue;
+				}
+				const Vec2f pursuer_pos = state.block(m_state_idxs[p][0], 0, 2, 1);
+				nearest = std::min(nearest, (evader_pos - pursuer_pos).norm());
+			}
+			return nearest;
+		}
+
+		void add_evader_distance_reward(
+			Eigen::Matrix<float,-1,1> &reward,
+			const Eigen::Matrix<float,-1,1> &state) const
+		{
+			const float max_reward_distance = std::max(lidar_max_range() - m_dist, 1e-8f);
+			for (int e : m_evaders) {
+				const float distance = nearest_active_pursuer_distance(state, e);
+				if (!std::isfinite(distance)) {
+					continue;
+				}
+				const float distance_fraction = std::max(
+					0.0f,
+					std::min(1.0f, (distance - m_dist) / max_reward_distance));
+				reward(e, 0) += m_evader_distance_reward_weight * distance_fraction;
+			}
 		}
 
 		std::vector<std::pair<int,int>> get_capture_pairs(
@@ -552,6 +590,7 @@ class Example8 : public Problem {
 					r(e,0) += 0.5f * surviving_evaders;
 				}
 			}
+			add_evader_distance_reward(r, next_state);
         
             for (int j=0; j<m_num_robots; ++j){
                 if (!is_robot_state_valid(next_state, j)) {

@@ -95,6 +95,7 @@ class C_PUCT(Solver):
 		problem_settings.action_idxs = problem.action_idxs
 		problem_settings.init_lims = problem.init_lims 
 		problem_settings.state_control_weight = problem.state_control_weight
+		problem_settings.evader_distance_reward_weight = getattr(problem, "evader_distance_reward_weight", 0.0)
 
 		if problem.name == "example2":
 			problem_settings.mass = problem.mass

@@ -18,6 +18,7 @@ class Problem_Settings
         float mass; 
         float g; 
         float desired_distance;
+        float evader_distance_reward_weight = 0.02f;
         float state_control_weight; 
         float r_max; 
         float r_min; 

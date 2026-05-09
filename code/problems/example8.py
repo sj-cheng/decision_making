@@ -431,14 +431,18 @@ class Example8(Problem):
 		self.diagnostic_substeps = self.default_diagnostic_substeps
 		self.desired_distance = 1.0
 		self.init_min_dist = 2.0
-		self.split_spawn_by_team = False
+		self.split_spawn_by_team = True
+		self.evader_spawn_near_obstacles = True
+		self.evader_obstacle_spawn_padding = 1.0
+		self.evader_obstacle_spawn_y_band = 2.0
+		self.evader_distance_reward_weight = 0.02
 		self.evaders = [0, 1]
 		self.pursuers = [2, 3]
 		self.turn_groups = [np.array([0, 1]), np.array([2, 3])]
 		self.time_idx = 8
 		self.active_idxs = [9, 10, 11, 12]
-		self.evader_speed_lim_range = (2.0, 2.0)
-		self.pursuer_speed_lim_range = (2.0, 2.0)
+		self.evader_speed_lim_range = (1.0, 1.0)
+		self.pursuer_speed_lim_range = (1.0, 1.0)
 
 		self.evader_acc_lim = self.evader_speed_lim_range[1] / self.dt
 		self.pursuer_acc_lim = self.pursuer_speed_lim_range[1] / self.dt
@@ -520,8 +524,8 @@ class Example8(Problem):
 			np.array([[2.0,4.0], [-1.5,1.5]], dtype=float),    # 中间偏右
 		]
 
-		self.current_evader_speed_lim = 2.0
-		self.current_pursuer_speed_lim = 2.0
+		self.current_evader_speed_lim = 1.0
+		self.current_pursuer_speed_lim = 1.0
 		self.update_action_lims()
 		self.update_init_lims()
 
@@ -570,8 +574,11 @@ class Example8(Problem):
 		self.Ru = self.state_control_weight * np.eye(2)
 
 	def update_init_lims(self):
-		evader_y_lims = (-9, 0) if self.split_spawn_by_team else (-9, 9)
-		pursuer_y_lims = (0, 9) if self.split_spawn_by_team else (-9, 9)
+		if self.evader_spawn_near_obstacles:
+			evader_y_lims = (-9, 9)
+		else:
+			evader_y_lims = (0, 9) if self.split_spawn_by_team else (-9, 9)
+		pursuer_y_lims = (-9, 0) if self.split_spawn_by_team else (-9, 9)
 		self.init_lims = np.array((
 			(-9,9), evader_y_lims,
 			(-9,9), evader_y_lims,
@@ -588,7 +595,6 @@ class Example8(Problem):
 			(0,0), (0,0),
 			(0,0), (0,0),
 		), dtype=float)
-
 	# 查询：判断指定机器人是否仍处于活跃状态
 	def is_active(self, state, robot):
 		return state[self.active_idxs[robot], 0] > 0.5
@@ -782,6 +788,36 @@ class Example8(Problem):
 			self.obstacle_boundary_distance(pos, obstacle) > min_clearance
 			for obstacle in self.obstacles
 		)
+
+	def sample_evader_obstacle_spawn_position(self, robot):
+		pos_idxs = self.state_idxs[robot]
+		x_lims = self.init_lims[pos_idxs[0], :]
+		y_lims = self.init_lims[pos_idxs[1], :]
+		min_clearance = 0.1 * self.desired_distance
+
+		for _ in range(100):
+			obstacle = self.obstacles[np.random.randint(len(self.obstacles))]
+			lower = np.array([
+				max(x_lims[0], obstacle[0, 0] - self.evader_obstacle_spawn_padding),
+				max(y_lims[0], obstacle[1, 0] - self.evader_obstacle_spawn_y_band),
+			], dtype=float)
+			upper = np.array([
+				min(x_lims[1], obstacle[0, 1] + self.evader_obstacle_spawn_padding),
+				min(y_lims[1], obstacle[1, 1] + self.evader_obstacle_spawn_y_band),
+			], dtype=float)
+			if np.any(upper <= lower):
+				continue
+
+			pos = (lower + np.random.rand(2) * (upper - lower)).reshape((2, 1))
+			if all(self.obstacle_boundary_distance(pos, obs) > min_clearance for obs in self.obstacles):
+				return pos
+
+		return sample_vector(self.init_lims[pos_idxs, :])
+
+	def sample_spawn_position(self, robot):
+		if robot in self.evaders and self.evader_spawn_near_obstacles and len(self.obstacles) > 0:
+			return self.sample_evader_obstacle_spawn_position(robot)
+		return sample_vector(self.init_lims[self.state_idxs[robot], :])
 
 	# 查询：获取指定机器人的当前速度上限
 	def get_robot_speed_limit(self, robot):
@@ -1056,6 +1092,28 @@ class Example8(Problem):
 				d = np.linalg.norm(state[self.state_idxs[e], :] - state[self.state_idxs[p], :])
 				min_dist = min(min_dist, d)
 		return min_dist
+
+	def nearest_active_pursuer_distance(self, state, evader):
+		if not self.is_active(state, evader):
+			return None
+		distances = [
+			np.linalg.norm(state[self.state_idxs[evader], :] - state[self.state_idxs[p], :])
+			for p in self.pursuers
+			if self.is_active(state, p)
+		]
+		if len(distances) == 0:
+			return None
+		return min(distances)
+
+	def add_evader_distance_reward(self, reward, state):
+		max_reward_distance = max(self.lidar_max_range() - self.desired_distance, 1e-8)
+		for evader in self.evaders:
+			distance = self.nearest_active_pursuer_distance(state, evader)
+			if distance is None:
+				continue
+			distance_fraction = (distance - self.desired_distance) / max_reward_distance
+			reward[evader, 0] += self.evader_distance_reward_weight * np.clip(distance_fraction, 0.0, 1.0)
+
 	# 游戏逻辑：获取当前状态下所有满足捕获条件的（追捕方, 逃逸方）配对
 	def get_capture_pairs(self, state):
 		candidates = []
@@ -1101,6 +1159,8 @@ class Example8(Problem):
 		while not valid:
 			self.randomize_speed_limits()
 			state = sample_vector(self.init_lims)
+			for robot in range(self.num_robots):
+				state[self.state_idxs[robot], :] = self.sample_spawn_position(robot)
 			state[self.time_idx, 0] = 0.0
 			for idx in self.active_idxs:
 				state[idx, 0] = 1.0
@@ -1135,6 +1195,7 @@ class Example8(Problem):
 			#t = min(s_next[self.time_idx, 0], self.tf)
 			surviving_evaders = self.active_evader_count(s_next)
 			reward[self.evaders, 0] += 0.5*surviving_evaders
+		self.add_evader_distance_reward(reward, s_next)
 		for robot in range (self.num_robots):
 			if (not contains(s_next[self.state_idxs[robot],:],self.state_lims[self.state_idxs[robot],:])) or self.check_obstacle_collision(s_next, robot):
 				if robot in self.evaders:
@@ -1393,6 +1454,93 @@ class Example8(Problem):
 		ax.set_aspect( (lims[1,1]-lims[1,0]) / (lims[0,1]-lims[0,0]) )
 
 		return fig,ax
+
+	def plot_sim_result_summary(self, sim_result):
+		times = np.asarray(sim_result["times"], dtype=float).reshape((-1,))
+		states = np.asarray(sim_result["states"], dtype=float)
+		actions = np.asarray(sim_result["actions"], dtype=float)
+		rewards = np.asarray(sim_result["rewards"], dtype=float)
+
+		if states.ndim == 3 and states.shape[-1] == 1:
+			states = states[:, :, 0]
+		states = np.atleast_2d(states)
+
+		if actions.size == 0:
+			actions = np.zeros((0, self.action_dim), dtype=float)
+		elif actions.ndim == 3 and actions.shape[-1] == 1:
+			actions = actions[:, :, 0]
+		actions = np.atleast_2d(actions)
+
+		if rewards.size == 0:
+			rewards = np.zeros((0, self.num_robots), dtype=float)
+		elif rewards.ndim == 3 and rewards.shape[-1] == 1:
+			rewards = rewards[:, :, 0]
+		rewards = np.atleast_2d(rewards)
+
+		labels = ["Evader 1", "Evader 2", "Pursuer 1", "Pursuer 2"]
+		colors = ["tab:blue", "tab:red", "#f2a7c8", "#9bd7e5"]
+		action_times = times[1:1 + actions.shape[0]]
+		reward_times = times[1:1 + rewards.shape[0]]
+
+		fig, axs = plt.subplots(3, 2, figsize=(9.2, 7.6), squeeze=False)
+
+		for robot in range(self.num_robots):
+			x_idx, y_idx = self.state_idxs[robot]
+			axs[0, 0].plot(times[:states.shape[0]], states[:, x_idx], color=colors[robot], label=labels[robot])
+			axs[0, 1].plot(times[:states.shape[0]], states[:, y_idx], color=colors[robot], label=labels[robot])
+
+			if actions.shape[0] > 0:
+				control = np.linalg.norm(actions[:, self.action_idxs[robot]], axis=1)
+				axs[1, 0].plot(action_times, control, color=colors[robot], label=labels[robot])
+
+		min_separation = []
+		for state in states:
+			distances = [
+				np.linalg.norm(state[self.state_idxs[e]] - state[self.state_idxs[p]])
+				for e in self.evaders
+				for p in self.pursuers
+				if state[self.active_idxs[e]] > 0.5 and state[self.active_idxs[p]] > 0.5
+			]
+			min_separation.append(min(distances) if distances else np.nan)
+		axs[1, 1].plot(times[:len(min_separation)], min_separation, color="0.2", label="min E-P distance")
+		axs[1, 1].axhline(self.desired_distance, color="0.55", linestyle="--", linewidth=1.5, label="capture radius")
+
+		if rewards.shape[0] > 0:
+			evader_reward = np.mean(rewards[:, self.evaders], axis=1)
+			pursuer_reward = np.mean(rewards[:, self.pursuers], axis=1)
+			axs[2, 0].plot(reward_times, evader_reward, color=colors[0], label="Evader team")
+			axs[2, 0].plot(reward_times, pursuer_reward, color=colors[1], label="Pursuer team")
+			axs[2, 1].plot(reward_times, np.cumsum(evader_reward), color=colors[0], label="Evader team")
+			axs[2, 1].plot(reward_times, np.cumsum(pursuer_reward), color=colors[1], label="Pursuer team")
+
+		panel_specs = [
+			(axs[0, 0], "x position", "time", "x"),
+			(axs[0, 1], "y position", "time", "y"),
+			(axs[1, 0], "control magnitude", "time", r"$\|u\|$"),
+			(axs[1, 1], "minimum separation", "time", "distance"),
+			(axs[2, 0], "instant reward", "time", "reward"),
+			(axs[2, 1], "cumulative reward", "time", "return"),
+		]
+		for ax, title, xlabel, ylabel in panel_specs:
+			ax.set_title(title)
+			ax.set_xlabel(xlabel)
+			ax.set_ylabel(ylabel)
+			ax.grid(True, color="0.88", linewidth=1.0)
+			ax.spines["top"].set_visible(False)
+			ax.spines["right"].set_visible(False)
+
+		axs[0, 0].set_ylim(self.state_lims[0, 0], self.state_lims[0, 1])
+		axs[0, 1].set_ylim(self.state_lims[1, 0], self.state_lims[1, 1])
+		for ax in axs[0, :]:
+			ax.legend(loc="best", fontsize=8, frameon=False, ncol=2)
+		axs[1, 0].legend(loc="best", fontsize=8, frameon=False, ncol=2)
+		axs[1, 1].legend(loc="best", fontsize=8, frameon=False)
+		axs[2, 0].legend(loc="best", fontsize=8, frameon=False)
+		axs[2, 1].legend(loc="best", fontsize=8, frameon=False)
+		axs[1, 0].set_ylim(bottom=0.0)
+		axs[1, 1].set_ylim(bottom=0.0)
+
+		fig.tight_layout()
 
 	# 可视化：绘制运行诊断图（各机器人速度/加速度随时间变化，含限幅对比）
 	def plot_run_diagnostics(self, sim_result):
