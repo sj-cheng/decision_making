@@ -73,6 +73,12 @@ class MixedTeamSolver(Solver):
 			"vis_on": vis_on,
 			"solver_name": c_puct_solver_name,
 		}
+		self.paper_tree_density_on = False
+		self.paper_tree_topk_on = False
+		self.paper_tree_capture_once = True
+		self.paper_tree_capture_step = 0
+		self.paper_tree_capture_turn = None
+		self.current_step = None
 		self.team_solvers = {}
 		self.last_team_decision_times = {}
 
@@ -138,7 +144,7 @@ class MixedTeamSolver(Solver):
 			policy_oracle = [None for _ in range(len(policy_oracle))]
 		value_oracle = self.value_oracle if method_settings["beta_value"] > 0.0 else None
 
-		return C_PUCT(
+		solver = C_PUCT(
 			policy_oracle=policy_oracle,
 			value_oracle=value_oracle,
 			search_depth=method_settings["search_depth"],
@@ -152,6 +158,15 @@ class MixedTeamSolver(Solver):
 			vis_on=self.common_settings["vis_on"],
 			solver_name=self.common_settings["solver_name"],
 		)
+		for attr in [
+			"paper_tree_density_on",
+			"paper_tree_topk_on",
+			"paper_tree_capture_once",
+			"paper_tree_capture_step",
+			"paper_tree_capture_turn",
+		]:
+			setattr(solver, attr, getattr(self, attr))
+		return solver
 
 	def _get_team_solver(self, team_name, team):
 		if team_name not in self.team_solvers:
@@ -167,6 +182,8 @@ class MixedTeamSolver(Solver):
 
 	def _team_policy(self, problem, state, team_name, team):
 		solver = self._get_team_solver(team_name, team)
+		if hasattr(solver, "current_step"):
+			solver.current_step = self.current_step
 		if isinstance(solver, C_PUCT):
 			result = solver.search(problem, state, turn=int(team[0]))
 			action = np.zeros((problem.action_dim, 1))

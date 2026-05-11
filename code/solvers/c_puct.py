@@ -33,6 +33,16 @@ class C_PUCT(Solver):
 		self.value_oracle = self.create_cpp_value_oracle(value_oracle)
 
 		self.vis_on = vis_on 
+		self.paper_tree_density_on = False
+		self.paper_tree_topk_on = False
+		self.paper_tree_capture_once = True
+		self.paper_tree_capture_step = 0
+		self.paper_tree_capture_turn = None
+		self.current_step = None
+		self.paper_tree_state = None
+		self.paper_tree_info = None
+		self.paper_tree_step = None
+		self.paper_tree_turn = None
 
 		self.solver_settings = Solver_Settings()
 		self.solver_settings.number_simulations = number_simulations
@@ -133,11 +143,34 @@ class C_PUCT(Solver):
 		result = cpp_search(problem_wrapper,self.solver_wrapper,root_state,turn)
 		# print('done')
 
+		if result.success and self._should_capture_paper_tree(turn):
+			self._capture_paper_tree(result, turn)
+
 		if self.vis_on: 
 			tree_state = result.tree 
 			plotter.plot_tree_state(problem,tree_state,zoom_on=True)
 
 		return result
+
+	def _should_capture_paper_tree(self, turn):
+		if not (self.paper_tree_density_on or self.paper_tree_topk_on):
+			return False
+		if self.paper_tree_capture_once and self.paper_tree_state is not None:
+			return False
+		if self.paper_tree_capture_step is not None and self.current_step != self.paper_tree_capture_step:
+			return False
+		if self.paper_tree_capture_turn is not None and turn != self.paper_tree_capture_turn:
+			return False
+		return True
+
+	def _capture_paper_tree(self, result, turn):
+		self.paper_tree_state = np.array(result.tree, copy=True)
+		try:
+			self.paper_tree_info = np.array(result.tree_info, copy=True)
+		except AttributeError:
+			self.paper_tree_info = None
+		self.paper_tree_step = self.current_step
+		self.paper_tree_turn = turn
 
 	def get_child_distribution(self,result):
 		mat = result.child_distribution;

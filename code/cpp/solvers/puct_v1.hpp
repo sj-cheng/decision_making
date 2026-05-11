@@ -136,6 +136,7 @@ class PUCT_V1 : public Solver {
 			solver_result.best_action = best_action_node->action_to_node; 
 			solver_result.child_distribution = export_child_distribution(problem);
 			solver_result.tree = export_tree(problem);
+			solver_result.tree_info = export_tree_info(root_eval_turn);
 			solver_result.value = root_node_ptr->total_value / root_node_ptr->num_visits;
 			solver_result.num_visits = root_node_ptr->num_visits;
 			return solver_result;
@@ -342,6 +343,26 @@ class PUCT_V1 : public Solver {
 				tree(ii,problem->m_state_dim) = parentIdx;
 			}
 			return tree; 
+		}
+
+
+		Eigen::MatrixXf export_tree_info(int robot_turn){
+			Eigen::MatrixXf tree_info(m_nodes.size(), 4);
+			for (int ii = 0; ii < m_nodes.size(); ++ii) {
+				int parentIdx = -1;
+				if (!(ii == 0)){
+					parentIdx = m_nodes[ii].parent - &m_nodes[0];
+				}
+				float mean_value = 0.0f;
+				if (m_nodes[ii].num_visits > 0) {
+					mean_value = m_nodes[ii].total_value(robot_turn) / m_nodes[ii].num_visits;
+				}
+				tree_info(ii,0) = parentIdx;
+				tree_info(ii,1) = m_nodes[ii].num_visits;
+				tree_info(ii,2) = m_nodes[ii].calc_depth();
+				tree_info(ii,3) = mean_value;
+			}
+			return tree_info;
 		}
 
 

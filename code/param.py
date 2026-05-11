@@ -6,7 +6,7 @@ class Param:
 	def __init__(self):
 
 		# 
-		self.parallel_on = True
+		self.parallel_on = False
 		self.num_trials = 100
 		self.fixed_initial_conditions = True
 		self.initial_seed = 20260506
@@ -14,7 +14,7 @@ class Param:
 
 		# names 
 		self.problem_name = "example8" # e.g. example1, example2, example3, ...
-		self.solver_name = "MixedTeam" # e.g. Empty, DARE, PUCT_V0, C_PUCT_V0, PUCT_V1, MixedTeam, ...
+		self.solver_name = "C_PUCT_V1" # e.g. Empty, DARE, PUCT_V0, C_PUCT_V0, PUCT_V1, MixedTeam, ...
 		# self.solver_name = "C_PUCT_V1" # e.g. Empty, DARE, PUCT_V0, C_PUCT_V0, PUCT_V1, MixedTeam, ...
 		self.value_oracle_name = "deterministic" # ["deterministic","gaussian"]
 		self.policy_oracle_name = "gaussian" # ["deterministic","gaussian"]
@@ -74,15 +74,27 @@ class Param:
 		self.pretty_plot_on = False
 
 		# solver settings 
-		self.number_simulations = 2000
+		self.number_simulations = 50
 		self.search_depth = 100
 		self.C_pw = 2.0							# 每个节点最多能扩展多少个子节点
 		self.alpha_pw = 0.5						# 访问次数增加时，子节点上限增长有多块 
 		self.C_exp = 1.0						# 探索项的权重，越大越倾向于探索
 		self.alpha_exp = 0.25					# 控制探索奖励随 N_parent 增长的速度
-		self.beta_policy = 1.0					# 节点使用策略网络的概率
-		self.beta_value = 1.0				# 使用价值网络的概率
-		self.vis_on = False
+		self.beta_policy = 0.0				# 节点使用策略网络的概率
+		self.beta_value = 0.0				# 使用价值网络的概率
+		self.vis_on = True
+
+		# paper tree figures are saved separately from the main run PDF
+		self.paper_tree_density_on = False
+		self.paper_tree_topk_on = False
+		self.paper_tree_capture_once = False
+		self.paper_tree_capture_step = 0
+		self.paper_tree_capture_turn = 0
+		self.paper_tree_density_bins = 65
+		self.paper_tree_density_weight_mode = "log_visits"
+		self.paper_tree_top_fraction = 0.05
+		self.paper_tree_top_max_edges = 700
+		self.paper_tree_top_min_visits = 1
 
 	def to_dict(self):
 		return self.__dict__

@@ -52,6 +52,7 @@ def make_instance(param, initial_seed=None):
 		vis_on=param.vis_on,
 		team_methods=getattr(param, "team_methods", None),
 		team_method_settings=getattr(param, "team_method_settings", None))
+	configure_paper_tree_capture(solver, param)
 
 	instance["policy_oracle"] = policy_oracle
 	instance["value_oracle"] = value_oracle
@@ -67,6 +68,22 @@ def make_instance(param, initial_seed=None):
 	# 	])
 
 	return instance 
+
+
+def configure_paper_tree_capture(solver, param):
+	attrs = [
+		"paper_tree_density_on",
+		"paper_tree_topk_on",
+		"paper_tree_capture_once",
+		"paper_tree_capture_step",
+		"paper_tree_capture_turn",
+	]
+	for attr in attrs:
+		if hasattr(param, attr):
+			setattr(solver, attr, getattr(param, attr))
+	if hasattr(solver, "team_solvers"):
+		for team_solver in solver.team_solvers.values():
+			configure_paper_tree_capture(team_solver, param)
 
 
 def run_instance(rank,queue,total,instance,verbose=False,tqdm_on=True):
@@ -100,6 +117,8 @@ def run_instance(rank,queue,total,instance,verbose=False,tqdm_on=True):
 		if verbose and not tqdm_on: print('\t\t t = {}/{}'.format(step,len(problem.times)))
 		
 		decision_start = time_module.perf_counter()
+		if hasattr(solver, "current_step"):
+			solver.current_step = step
 		action = solver.policy(problem,curr_state)
 		decision_times.append(time_module.perf_counter() - decision_start)
 		for team_name, elapsed in getattr(solver, "last_team_decision_times", {}).items():
@@ -309,6 +328,74 @@ def save_summary_csv(summary, filename):
 		writer.writerow(summary)
 
 
+def _find_paper_tree_solver(solver):
+	if solver is None:
+		return None
+	if getattr(solver, "paper_tree_state", None) is not None:
+		return solver
+	if hasattr(solver, "team_solvers"):
+		for team_solver in solver.team_solvers.values():
+			found = _find_paper_tree_solver(team_solver)
+			if found is not None:
+				return found
+	return None
+
+
+def save_paper_tree_figures(sim_results, param, run_label):
+	if not (
+		getattr(param, "paper_tree_density_on", False)
+		or getattr(param, "paper_tree_topk_on", False)
+	):
+		return
+
+	tree_solver = None
+	problem = None
+	for sim_result in sim_results:
+		instance = sim_result.get("instance", {})
+		tree_solver = _find_paper_tree_solver(instance.get("solver", None))
+		if tree_solver is not None:
+			problem = instance.get("problem", None)
+			break
+
+	if tree_solver is None or problem is None:
+		print("paper tree figure skipped: no captured tree found")
+		return
+
+	tree_state = tree_solver.paper_tree_state
+	tree_info = getattr(tree_solver, "paper_tree_info", None)
+	capture_suffix = "step{}_turn{}".format(
+		getattr(tree_solver, "paper_tree_step", "unknown"),
+		getattr(tree_solver, "paper_tree_turn", "unknown"),
+	)
+
+	if getattr(param, "paper_tree_density_on", False):
+		density_path = "../current/plots/tree_density_{}_{}.pdf".format(run_label, capture_suffix)
+		fig = plotter.plot_tree_density(
+			problem,
+			tree_state,
+			tree_info=tree_info,
+			bins=getattr(param, "paper_tree_density_bins", 65),
+			weight_mode=getattr(param, "paper_tree_density_weight_mode", "log_visits"),
+			title="Search density, {}".format(capture_suffix),
+		)
+		plotter.save_fig(fig, density_path)
+		print("saved paper tree density to {}".format(density_path))
+
+	if getattr(param, "paper_tree_topk_on", False):
+		topk_path = "../current/plots/tree_topk_{}_{}.pdf".format(run_label, capture_suffix)
+		fig = plotter.plot_tree_topk(
+			problem,
+			tree_state,
+			tree_info=tree_info,
+			top_fraction=getattr(param, "paper_tree_top_fraction", 0.05),
+			max_edges=getattr(param, "paper_tree_top_max_edges", 700),
+			min_visits=getattr(param, "paper_tree_top_min_visits", 1),
+			title="Top search-tree branches, {}".format(capture_suffix),
+		)
+		plotter.save_fig(fig, topk_path)
+		print("saved paper tree top-k to {}".format(topk_path))
+
+
 if __name__ == '__main__':
 
 	param = Param()
@@ -350,6 +437,7 @@ if __name__ == '__main__':
 	# plotting 
 	print('plotting results...')
 	run_label = get_run_label(param)
+	save_paper_tree_figures(sim_results, param, run_label)
 	for sim_result in sim_results:
 		plotter.plot_sim_result(sim_result)
 		sim_result["instance"]["problem"].render(states=sim_result["states"])

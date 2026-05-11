@@ -73,6 +73,7 @@ PYBIND11_MODULE(bindings, m) {
         .def_readwrite("best_action", &Solver_Result::best_action)
         .def_readwrite("child_distribution", &Solver_Result::child_distribution)
         .def_readwrite("tree", &Solver_Result::tree)
+        .def_readwrite("tree_info", &Solver_Result::tree_info)
         .def_readwrite("value", &Solver_Result::value)
         .def_readwrite("success", &Solver_Result::success);
 

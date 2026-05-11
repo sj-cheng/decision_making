@@ -15,6 +15,7 @@ plt.rcParams['lines.linewidth'] = 2.5
 
 import matplotlib
 matplotlib.use('Agg')
+from matplotlib.colors import LogNorm, Normalize
 
 
 def has_figs():
@@ -34,6 +35,15 @@ def save_figs(filename):
 		pp.savefig(plt.figure(i))
 		plt.close(plt.figure(i))
 	pp.close()
+
+
+def save_fig(fig, filename):
+	file_dir,  file_name = os.path.split(filename)
+	if len(file_dir) > 0 and not os.path.isdir(file_dir):
+		os.makedirs(file_dir)
+	fn = os.path.join(os.getcwd(), filename)
+	fig.savefig(fn, bbox_inches="tight")
+	plt.close(fig)
 
 
 def open_figs(filename):
@@ -422,6 +432,236 @@ def plot_tree_state(problem,tree_state,zoom_on=True):
 
 	else: 
 		print('tree plot dimension not supported')
+
+
+def _tree_arrays(problem, tree_state, tree_info=None):
+	tree_state = np.asarray(tree_state, dtype=float)
+	if tree_state.ndim == 1:
+		tree_state = tree_state.reshape((1, -1))
+	state_dim = int(_get_problem_attr(problem, "state_dim", tree_state.shape[1] - 1))
+	states = tree_state[:, :state_dim]
+
+	n = states.shape[0]
+	parent = np.full(n, -1, dtype=int)
+	visits = np.ones(n, dtype=float)
+	depth = np.zeros(n, dtype=float)
+	value = np.zeros(n, dtype=float)
+
+	if tree_info is not None:
+		info = np.asarray(tree_info, dtype=float)
+		if info.ndim == 1:
+			info = info.reshape((1, -1))
+		if info.shape[0] == n and info.shape[1] >= 4:
+			parent = info[:, 0].astype(int)
+			visits = np.maximum(info[:, 1], 0.0)
+			depth = info[:, 2]
+			value = info[:, 3]
+			return states, parent, visits, depth, value
+
+	if tree_state.shape[1] > state_dim:
+		parent = tree_state[:, state_dim].astype(int)
+	depth = _calc_tree_depths(parent)
+	return states, parent, visits, depth, value
+
+
+def _calc_tree_depths(parent):
+	parent = np.asarray(parent, dtype=int)
+	depth = np.zeros(len(parent), dtype=float)
+	for idx in range(len(parent)):
+		ptr = parent[idx]
+		seen = 0
+		while ptr >= 0 and ptr < len(parent) and seen < len(parent):
+			depth[idx] += 1
+			ptr = parent[ptr]
+			seen += 1
+	return depth
+
+
+def _paper_tree_axes(problem, title=None):
+	num_robots = int(_get_problem_attr(problem, "num_robots", 1))
+	ncols = min(2, max(1, num_robots))
+	nrows = int(math.ceil(num_robots / ncols))
+	fig, axes = plt.subplots(
+		nrows,
+		ncols,
+		figsize=(3.45 * ncols, 3.35 * nrows),
+		sharex=True,
+		sharey=True,
+		constrained_layout=True,
+	)
+	axes = np.asarray(axes).reshape(-1)
+	for ax in axes[num_robots:]:
+		ax.set_visible(False)
+	if title is not None:
+		fig.suptitle(title, fontsize=11)
+	return fig, axes[:num_robots]
+
+
+def _robot_xy(problem, states, robot):
+	position_idxs = np.asarray(_get_problem_attr(problem, "position_idx", np.arange(2)), dtype=int)
+	state_idxs = _get_problem_attr(problem, "state_idxs", [])
+	robot_state_idxs = np.asarray(state_idxs[robot], dtype=int)
+	robot_position_idxs = robot_state_idxs[position_idxs]
+	return states[:, robot_position_idxs]
+
+
+def _setup_tree_axis(problem, fig, ax, robot):
+	problem.render(fig=fig, ax=ax)
+	ax.grid(True, color="0.9", linewidth=0.6)
+	ax.set_title(_robot_label(problem, robot), fontsize=9)
+	ax.set_xlabel("x")
+	ax.set_ylabel("y")
+
+
+def _tree_density_weights(visits, mode):
+	if mode == "visits":
+		return np.maximum(visits, 1.0)
+	if mode == "log_visits":
+		return np.log1p(np.maximum(visits, 0.0)) + 1.0
+	return np.ones_like(visits, dtype=float)
+
+
+def plot_tree_density(problem, tree_state, tree_info=None, bins=65, weight_mode="log_visits", title=None):
+	if len(_get_problem_attr(problem, "position_idx", [])) != 2:
+		return plot_tree_state(problem, tree_state, zoom_on=True)
+
+	states, parent, visits, depth, value = _tree_arrays(problem, tree_state, tree_info)
+	weights = _tree_density_weights(visits, weight_mode)
+	fig, axes = _paper_tree_axes(problem, title=title)
+	cmaps = ["Blues", "Reds", "PuRd", "YlGnBu", "Greens", "Oranges"]
+	lims = _get_problem_attr(problem, "state_lims")
+	position_idxs = np.asarray(_get_problem_attr(problem, "position_idx", np.arange(2)), dtype=int)
+	xlim = lims[position_idxs[0], :]
+	ylim = lims[position_idxs[1], :]
+
+	for robot, ax in enumerate(axes):
+		xy = _robot_xy(problem, states, robot)
+		valid = np.isfinite(xy[:, 0]) & np.isfinite(xy[:, 1])
+		if np.any(valid):
+			hb = ax.hexbin(
+				xy[valid, 0],
+				xy[valid, 1],
+				C=weights[valid],
+				reduce_C_function=np.sum,
+				gridsize=bins,
+				extent=(xlim[0], xlim[1], ylim[0], ylim[1]),
+				cmap=cmaps[robot % len(cmaps)],
+				norm=LogNorm(),
+				mincnt=1,
+				linewidths=0,
+			)
+			fig.colorbar(hb, ax=ax, fraction=0.045, pad=0.02)
+			ax.scatter(xy[0, 0], xy[0, 1], marker="x", s=34, color="black", linewidths=1.1, zorder=4)
+		_setup_tree_axis(problem, fig, ax, robot)
+
+	return fig
+
+
+def _select_top_tree_nodes(parent, visits, top_fraction=0.05, max_edges=700, min_visits=1):
+	n = len(parent)
+	if n <= 1:
+		return np.array([0], dtype=int)
+
+	candidates = np.arange(1, n)
+	candidates = candidates[(parent[candidates] >= 0) & (visits[candidates] >= min_visits)]
+	if len(candidates) == 0:
+		candidates = np.arange(1, n)
+
+	target = int(math.ceil(max(1, len(candidates) * top_fraction)))
+	if max_edges is not None:
+		target = min(target, int(max_edges))
+	order = np.lexsort((candidates, -visits[candidates]))
+	chosen = candidates[order[:target]]
+
+	selected = {0}
+	for idx in chosen:
+		ptr = int(idx)
+		seen = 0
+		while ptr >= 0 and ptr < n and seen < n:
+			selected.add(ptr)
+			ptr = int(parent[ptr])
+			seen += 1
+	return np.array(sorted(selected), dtype=int)
+
+
+def _edge_widths(visits):
+	visits = np.asarray(visits, dtype=float)
+	if len(visits) == 0:
+		return visits
+	log_visits = np.log1p(np.maximum(visits, 0.0))
+	vmin = np.amin(log_visits)
+	vmax = np.amax(log_visits)
+	if vmax <= vmin:
+		return np.full(len(visits), 0.8)
+	return 0.3 + 2.2 * (log_visits - vmin) / (vmax - vmin)
+
+
+def plot_tree_topk(
+	problem,
+	tree_state,
+	tree_info=None,
+	top_fraction=0.05,
+	max_edges=700,
+	min_visits=1,
+	title=None,
+):
+	if len(_get_problem_attr(problem, "position_idx", [])) != 2:
+		return plot_tree_state(problem, tree_state, zoom_on=True)
+
+	states, parent, visits, depth, value = _tree_arrays(problem, tree_state, tree_info)
+	selected = _select_top_tree_nodes(parent, visits, top_fraction, max_edges, min_visits)
+	selected_set = set(selected.tolist())
+	edge_nodes = np.array(
+		[idx for idx in selected if idx > 0 and parent[idx] in selected_set],
+		dtype=int,
+	)
+	edge_visits = visits[edge_nodes] if len(edge_nodes) > 0 else np.array([])
+	edge_depth = depth[edge_nodes] if len(edge_nodes) > 0 else np.array([])
+	widths = _edge_widths(edge_visits)
+	norm = Normalize(vmin=0, vmax=max(1.0, np.amax(depth[selected]) if len(selected) else 1.0))
+
+	plot_title = title
+	if plot_title is None:
+		plot_title = "Top search-tree branches ({} edges)".format(len(edge_nodes))
+	fig, axes = _paper_tree_axes(problem, title=plot_title)
+	first_collection = None
+
+	for robot, ax in enumerate(axes):
+		xy = _robot_xy(problem, states, robot)
+		segments = []
+		for idx in edge_nodes:
+			parent_idx = parent[idx]
+			segments.append([xy[parent_idx], xy[idx]])
+
+		if len(segments) > 0:
+			collection = matplotlib.collections.LineCollection(
+				segments,
+				cmap="viridis",
+				norm=norm,
+				linewidths=widths,
+				alpha=0.78,
+				zorder=2,
+			)
+			collection.set_array(edge_depth)
+			ax.add_collection(collection)
+			if first_collection is None:
+				first_collection = collection
+		if len(selected) > 0:
+			ax.scatter(
+				xy[selected, 0],
+				xy[selected, 1],
+				s=4,
+				color="0.15",
+				alpha=0.28,
+				linewidths=0,
+				zorder=3,
+			)
+			ax.scatter(xy[0, 0], xy[0, 1], marker="x", s=36, color="black", linewidths=1.1, zorder=4)
+		_setup_tree_axis(problem, fig, ax, robot)
+
+	if first_collection is not None:
+		fig.colorbar(first_collection, ax=list(axes), fraction=0.025, pad=0.02, label="depth")
+	return fig
 
 
 def plot_value_dataset(problem,datasets,dataset_names):
