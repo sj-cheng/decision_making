@@ -441,7 +441,7 @@ class Example8(Problem):
 		self.turn_groups = [np.array([0, 1]), np.array([2, 3])]
 		self.time_idx = 8
 		self.active_idxs = [9, 10, 11, 12]
-		self.evader_speed_lim_range = (1.0, 1.0)
+		self.evader_speed_lim_range = (1.5, 1.5)
 		self.pursuer_speed_lim_range = (1.0, 1.0)
 
 		self.evader_acc_lim = self.evader_speed_lim_range[1] / self.dt
@@ -516,15 +516,15 @@ class Example8(Problem):
 		self.approx_dist = (self.state_lims[0,1] - self.state_lims[0,0]) / 10
 
 		self.obstacles = [
-			# np.array([[-4.0, -2.0], [-3.5,-1.5]], dtype=float),  # 中间偏左
-			# np.array([[2.0, 4.0], [1.5, 3.5]], dtype=float),    # 中间偏右
-			# np.array([[-4.0, -2.0], [1.5, 3.5]], dtype=float),
-			# np.array([[2.0, 4.0], [-3.5, -1.5]], dtype=float),
-			np.array([[-4.0,-2.0], [-1.5,1.5]], dtype=float),  # 中间偏左
-			np.array([[2.0,4.0], [-1.5,1.5]], dtype=float),    # 中间偏右
+			np.array([[-4.0, -2.0], [-3.5,-1.5]], dtype=float),  # 左下
+			np.array([[2.0, 4.0], [1.5, 3.5]], dtype=float),    # 右上
+			np.array([[-4.0, -2.0], [1.5, 3.5]], dtype=float),  # 左上
+			np.array([[2.0, 4.0], [-3.5, -1.5]], dtype=float),  # 右下
+			# np.array([[-4.0,-2.0], [-1.5,1.5]], dtype=float),  # 中间偏左
+			# np.array([[2.0,4.0], [-1.5,1.5]], dtype=float),    # 中间偏右
 		]
 
-		self.current_evader_speed_lim = 1.0
+		self.current_evader_speed_lim = 1.5
 		self.current_pursuer_speed_lim = 1.0
 		self.update_action_lims()
 		self.update_init_lims()
