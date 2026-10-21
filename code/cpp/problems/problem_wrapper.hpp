@@ -19,7 +19,11 @@
 class Problem_Wrapper
 {
     public:
-        Problem* problem;
+        Problem* problem = nullptr;
+        Problem_Wrapper(const Problem_Wrapper&) = delete;
+        Problem_Wrapper& operator=(const Problem_Wrapper&) = delete;
+        ~Problem_Wrapper() { delete problem; }
+
         Problem_Wrapper(std::string string, Problem_Settings problem_settings) 
         {
             if (string == "example1"){

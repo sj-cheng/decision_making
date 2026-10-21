@@ -134,7 +134,7 @@ class PUCT_V0(Solver):
 
 		# init heuristics
 		if self.policy_oracle is not None: 
-			self.policy_solver = PolicySolver(problem,self.policy_oracle)
+			self.policy_solver = PolicySolver(self.policy_oracle,stochastic=True)
 		if self.value_oracle is not None: 
 			self.value_solver = ValueSolver(problem,self.value_oracle)
 

@@ -216,7 +216,7 @@ def plot_tree_state(problem,tree_state,zoom_on=True):
 
 def plot_value_dataset(problem,datasets,dataset_names):
 	
-	encoding_dim = problem.policy_encoding_dim
+	encoding_dim = problem.value_encoding_dim
 	target_dim = 1
 	state_lims = problem.state_lims
 	# action_lims = [0,1]
@@ -228,7 +228,7 @@ def plot_value_dataset(problem,datasets,dataset_names):
 		fig,ax = plt.subplots(nrows=2,ncols=max((encoding_dim,target_dim)),squeeze=False)
 		for i_e in range(encoding_dim):
 			ax[0,i_e].hist(encodings[:,i_e])
-			if not (np.isinf(np.abs(state_lims[i_e,:])).any()):
+			if i_e < state_lims.shape[0] and not (np.isinf(np.abs(state_lims[i_e,:])).any()):
 				ax[0,i_e].set_xlim(state_lims[i_e,0],state_lims[i_e,1])
 		ax[0,0].set_ylabel("Encoding")
 
@@ -260,7 +260,7 @@ def plot_policy_dataset(problem,datasets,dataset_names,robot):
 			fig,ax = plt.subplots(nrows=3,ncols=max((encoding_dim,target_dim)),squeeze=False)
 			for i_e in range(encoding_dim):
 				ax[0,i_e].hist(encodings[:,i_e])
-				if not (np.isinf(np.abs(state_lims[i_e,:])).any()):
+				if i_e < state_lims.shape[0] and not (np.isinf(np.abs(state_lims[i_e,:])).any()):
 					ax[0,i_e].set_xlim(state_lims[i_e,0],state_lims[i_e,1])
 			ax[0,0].set_ylabel("Encoding")
 
@@ -277,7 +277,7 @@ def plot_policy_dataset(problem,datasets,dataset_names,robot):
 
 			for i_e in range(encoding_dim):
 				ax[0,i_e].hist(encodings[:,i_e])
-				if not (np.isinf(np.abs(state_lims[i_e,:])).any()):
+				if i_e < state_lims.shape[0] and not (np.isinf(np.abs(state_lims[i_e,:])).any()):
 					ax[0,i_e].set_xlim(state_lims[i_e,0],state_lims[i_e,1])
 			ax[0,0].set_ylabel("Encoding")
 

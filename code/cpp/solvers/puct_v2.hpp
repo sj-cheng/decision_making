@@ -23,6 +23,7 @@ class PUCT_V2 : public Solver {
 			m_alpha_pw = solver_settings.alpha_pw;
 			m_beta_policy = solver_settings.beta_policy;
 			m_beta_value = solver_settings.beta_value;
+			m_export_tree = solver_settings.export_tree;
 		}
 
 		struct Node { 
@@ -66,6 +67,7 @@ class PUCT_V2 : public Solver {
 
 			if (problem->is_terminal(root_state)){
 				solver_result.success = false;
+				std::vector<Node>().swap(m_nodes);
 				return solver_result; 
 			}
 
@@ -100,8 +102,12 @@ class PUCT_V2 : public Solver {
 			solver_result.success = true;
 			solver_result.best_action = most_visited(root_node_ptr,0)->action_to_node; 
 			solver_result.child_distribution = export_child_distribution(problem);
-			solver_result.tree = export_tree(problem);
+			if (m_export_tree) {
+				solver_result.tree = export_tree(problem);
+			}
 			solver_result.value = root_node_ptr->total_value / root_node_ptr->num_visits;
+			solver_result.num_visits = root_node_ptr->num_visits;
+			std::vector<Node>().swap(m_nodes);
 			return solver_result;
 		}
 
@@ -240,6 +246,7 @@ class PUCT_V2 : public Solver {
 		float m_alpha_pw;
 		float m_beta_policy;
 		float m_beta_value;
+		bool m_export_tree = false;
 		std::vector<Node> m_nodes;
 
 };

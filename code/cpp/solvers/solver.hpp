@@ -20,6 +20,8 @@ class Solver_Settings
 		float alpha_pw;
 		float beta_policy;
 		float beta_value;
+		// Full node states are only needed when a tree is being plotted.
+		bool export_tree = false;
         
 };
 
@@ -28,6 +30,9 @@ class Solver_Result
 {
     public:
         Eigen::Matrix<float,-1,1> best_action;
+        // Individual-Q actions for policy supervision.  best_action remains
+        // the joint team action used by the executable solver.
+        Eigen::Matrix<float,-1,-1> best_actions;
         Eigen::Matrix<float,-1,-1> child_distribution;
         Eigen::MatrixXf tree;
         Eigen::Matrix<float,-1,1> value; 

@@ -11,7 +11,7 @@
 #include "learning/value_network_wrapper.hpp"
 
 
-Solver_Result cpp_search(Problem_Wrapper problem_wrapper, Solver_Wrapper solver_wrapper, Eigen::Matrix<float,-1,1> state, int turn) {
+Solver_Result cpp_search(Problem_Wrapper& problem_wrapper, Solver_Wrapper& solver_wrapper, Eigen::Matrix<float,-1,1> state, int turn) {
     Solver_Result solver_result; 
     state.resize(problem_wrapper.problem->m_state_dim,1);
     solver_result = solver_wrapper.solver->search(problem_wrapper.problem,state,turn);
@@ -25,7 +25,27 @@ PYBIND11_MODULE(bindings, m) {
     m.def("cpp_search", &cpp_search, "PUCT");
 
     pybind11::class_<Problem_Wrapper> (m, "Problem_Wrapper")
-        .def(pybind11::init<std::string,Problem_Settings>());
+        .def(pybind11::init<std::string,Problem_Settings>())
+        // Expose the exact C++ encoders for cross-language parity checks.
+        .def("policy_encoding", [](Problem_Wrapper &wrapper,
+                                    Eigen::Matrix<float,-1,1> state, int robot) {
+            return wrapper.problem->policy_encoding(state, robot);
+        })
+        .def("value_encoding", [](Problem_Wrapper &wrapper,
+                                   Eigen::Matrix<float,-1,1> state) {
+            return wrapper.problem->value_encoding(state);
+        })
+        .def("step", [](Problem_Wrapper &wrapper,
+                         Eigen::Matrix<float,-1,1> state,
+                         Eigen::Matrix<float,-1,1> action,
+                         float timestep) {
+            return wrapper.problem->step(state, action, timestep);
+        })
+        .def("normalized_reward", [](Problem_Wrapper &wrapper,
+                                      Eigen::Matrix<float,-1,1> state,
+                                      Eigen::Matrix<float,-1,1> action) {
+            return wrapper.problem->normalized_reward(state, action);
+        });
 
     pybind11::class_<Problem_Settings> (m, "Problem_Settings")
         .def(pybind11::init())
@@ -41,6 +61,9 @@ PYBIND11_MODULE(bindings, m) {
         .def_readwrite("init_lims", &Problem_Settings::init_lims)
         .def_readwrite("desired_distance", &Problem_Settings::desired_distance)
         .def_readwrite("evader_distance_reward_weight", &Problem_Settings::evader_distance_reward_weight)
+        .def_readwrite("cross_team_distance_reward_weight", &Problem_Settings::cross_team_distance_reward_weight)
+        .def_readwrite("evader_progress_reward_weight", &Problem_Settings::evader_progress_reward_weight)
+        .def_readwrite("pursuer_progress_reward_weight", &Problem_Settings::pursuer_progress_reward_weight)
         .def_readwrite("desired_state", &Problem_Settings::desired_state)
         .def_readwrite("r_max", &Problem_Settings::r_max)
         .def_readwrite("r_min", &Problem_Settings::r_min)
@@ -67,11 +90,13 @@ PYBIND11_MODULE(bindings, m) {
         .def_readwrite("C_pw", &Solver_Settings::C_pw)
         .def_readwrite("alpha_pw", &Solver_Settings::alpha_pw)
         .def_readwrite("beta_policy", &Solver_Settings::beta_policy)
-        .def_readwrite("beta_value", &Solver_Settings::beta_value);
+        .def_readwrite("beta_value", &Solver_Settings::beta_value)
+        .def_readwrite("export_tree", &Solver_Settings::export_tree);
 
     pybind11::class_<Solver_Result> (m, "Solver_Result")
         .def(pybind11::init())
         .def_readwrite("best_action", &Solver_Result::best_action)
+        .def_readwrite("best_actions", &Solver_Result::best_actions)
         .def_readwrite("child_distribution", &Solver_Result::child_distribution)
         .def_readwrite("tree", &Solver_Result::tree)
         .def_readwrite("value", &Solver_Result::value)

@@ -12,6 +12,7 @@ from cpp.build.bindings import Policy_Network_Wrapper, Value_Network_Wrapper
 
 
 class C_PUCT(Solver):
+	supports_team_policy = True
 
 	def __init__(self,
 		policy_oracle=[None],\
@@ -43,15 +44,19 @@ class C_PUCT(Solver):
 		self.solver_settings.alpha_exp = alpha_exp
 		self.solver_settings.beta_policy = beta_policy
 		self.solver_settings.beta_value = beta_value
+		self.solver_settings.export_tree = bool(vis_on)
 		self.solver_name = solver_name
 		self.solver_wrapper = Solver_Wrapper(solver_name,self.solver_settings,self.policy_oracle,self.value_oracle)
 
 
-	def policy(self,problem,root_state):
+	def policy(self,problem,root_state,team=None):
 		py_action = np.zeros((problem.action_dim,1))
+		team = None if team is None else set(int(robot) for robot in team)
 
 		if hasattr(problem, "turn_groups"):
 			for group in problem.turn_groups:
+				if team is not None and not any(int(robot) in team for robot in group):
+					continue
 				turn = int(group[0])   # 用队里的第一个机器人做代表
 				result = self.search(problem, root_state, turn=turn) 
 				if not result.success:
@@ -66,6 +71,8 @@ class C_PUCT(Solver):
 
 			return py_action
 		for robot in range(problem.num_robots): 
+			if team is not None and robot not in team:
+				continue
 			robot_action_idxs = problem.action_idxs[robot]
 			result = self.search(problem,root_state,turn=robot)
 			py_action[robot_action_idxs,0] = result.best_action[robot_action_idxs]
@@ -77,9 +84,20 @@ class C_PUCT(Solver):
 
 		return py_action
 
-	def search(self,problem,root_state,turn=0):
+	def _problem_wrapper_for(self, problem):
+		# Dynamics parameters do not change between decisions, so the C++
+		# problem is built once and reused. Rebuilding it every search both
+		# leaked the previous instance and repeated the lidar setup.
+		# Example8 randomizes the per-episode speed limits in initialize().
+		# Those limits are part of the C++ problem contract, so invalidate the
+		# wrapper when they change instead of reusing stale action bounds.
+		action_lims_signature = np.ascontiguousarray(problem.action_lims, dtype=np.float64).tobytes()
+		init_lims_signature = np.ascontiguousarray(problem.init_lims, dtype=np.float64).tobytes()
+		cpp_signature = (id(problem), action_lims_signature, init_lims_signature, float(problem.dt))
+		cached = getattr(self, "_cpp_problem", None)
+		if cached is not None and getattr(self, "_cpp_problem_signature", None) == cpp_signature:
+			return cached
 
-		# problem settings 
 		problem_settings = Problem_Settings()
 		problem_settings.state_dim = problem.state_dim
 		problem_settings.action_dim = problem.action_dim
@@ -96,6 +114,12 @@ class C_PUCT(Solver):
 		problem_settings.init_lims = problem.init_lims 
 		problem_settings.state_control_weight = problem.state_control_weight
 		problem_settings.evader_distance_reward_weight = getattr(problem, "evader_distance_reward_weight", 0.0)
+		problem_settings.cross_team_distance_reward_weight = getattr(
+			problem, "cross_team_distance_reward_weight", 0.0)
+		problem_settings.evader_progress_reward_weight = getattr(
+			problem, "evader_progress_reward_weight", 0.0)
+		problem_settings.pursuer_progress_reward_weight = getattr(
+			problem, "pursuer_progress_reward_weight", 0.0)
 
 		if problem.name == "example2":
 			problem_settings.mass = problem.mass
@@ -128,11 +152,13 @@ class C_PUCT(Solver):
 			print("problem not supported")
 			exit()
 
-		# problem 
-		problem_wrapper = Problem_Wrapper(problem.name,problem_settings)
+		problem_wrapper = Problem_Wrapper(problem.name, problem_settings)
+		self._cpp_problem = problem_wrapper
+		self._cpp_problem_signature = cpp_signature
+		return problem_wrapper
 
-		# 
-		# print('search')
+	def search(self,problem,root_state,turn=0):
+		problem_wrapper = self._problem_wrapper_for(problem)
 		result = cpp_search(problem_wrapper,self.solver_wrapper,root_state,turn)
 		# print('done')
 

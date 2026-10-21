@@ -21,11 +21,20 @@ def get_solver(solver_name,
 				alpha_exp=0.25,
 				beta_policy=0.0,
 				beta_value=1.0,
-				vis_on=False):
+				vis_on=False,
+				policy_stochastic=False):
 
 	if solver_name == "Empty": 
 		from solvers.empty import Empty
 		solver = Empty()
+
+	elif solver_name == "Random":
+		from solvers.baselines import RandomBaseline
+		solver = RandomBaseline()
+
+	elif solver_name == "Greedy":
+		from solvers.baselines import GreedyPursuitEvasion
+		solver = GreedyPursuitEvasion()
 
 	elif solver_name == "MCTS": 
 		from solvers.mcts import MCTS 
@@ -85,7 +94,7 @@ def get_solver(solver_name,
 
 	elif solver_name == "NeuralNetwork":
 		from solvers.policy_solver import PolicySolver
-		solver = PolicySolver(policy_oracle=policy_oracle)
+		solver = PolicySolver(policy_oracle=policy_oracle, stochastic=policy_stochastic)
 
 	elif solver_name in ["C_PUCT_V0","C_PUCT_V1","C_PUCT_V2"]: 
 		from solvers.c_puct import C_PUCT
@@ -106,4 +115,4 @@ def get_solver(solver_name,
 
 
 
-	return solver 
+	return solver

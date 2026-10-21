@@ -431,22 +431,45 @@ class Example8(Problem):
 		self.diagnostic_substeps = self.default_diagnostic_substeps
 		self.desired_distance = 1.0
 		self.init_min_dist = 2.0
-		self.split_spawn_by_team = True
-		self.evader_spawn_near_obstacles = True
+		self.split_spawn_by_team = False
+		self.evader_spawn_near_obstacles = False
 		self.evader_obstacle_spawn_padding = 1.0
 		self.evader_obstacle_spawn_y_band = 2.0
-		self.evader_distance_reward_weight = 0.02
+		# A saturated absolute-distance bonus rewards sitting at the boundary and
+		# can dominate the small step-to-step signal.  Progress shaping below is
+		# the active escape signal; keep this legacy term disabled by default.
+		self.evader_distance_reward_weight = 0.0
+		# Distance progress is assigned per active robot.  The old global
+		# min-cross-team potential gave both evaders the same credit, so an
+		# evader that was already safe could cancel the progress made by its
+		# teammate.  Keep the legacy term available for old experiments, but
+		# disable it in the current training protocol.
+		self.cross_team_distance_reward_weight = 0.0
+		# The previous value made the dense signal only about 0.016 for a
+		# full-speed one-step separation (scale=4*desired_distance).  That was
+		# easily beaten by the zero-action edge-safe child in PUCT.
+		self.evader_progress_reward_weight = 0.20
+		self.pursuer_progress_reward_weight = 0.03
 		self.evaders = [0, 1]
 		self.pursuers = [2, 3]
 		self.turn_groups = [np.array([0, 1]), np.array([2, 3])]
 		self.time_idx = 8
 		self.active_idxs = [9, 10, 11, 12]
-		self.evader_speed_lim_range = (1.5, 1.5)
-		self.pursuer_speed_lim_range = (1.0, 1.0)
+		self.base_state_dim = 29
+		self.memory_feature_dim = 6
+		self.memory_idxs = [
+			np.arange(self.base_state_dim + robot * self.memory_feature_dim,
+					  self.base_state_dim + (robot + 1) * self.memory_feature_dim)
+			for robot in range(self.num_robots)
+		]
+		self.evader_speed_lim_range = (0.8, 1.0)
+		self.pursuer_speed_lim_range = (1.0, 1.2)
 
 		self.evader_acc_lim = self.evader_speed_lim_range[1] / self.dt
 		self.pursuer_acc_lim = self.pursuer_speed_lim_range[1] / self.dt
-		self.state_dim = 29
+		# Append persistent observation memory to each simulator state.  The
+		# original 29 physical entries and all their indices remain unchanged.
+		self.state_dim = self.base_state_dim + self.num_robots * self.memory_feature_dim
 		self.action_dim = 8
 		self.state_idxs = [
 			np.array([0,1]),  # E1
@@ -476,11 +499,18 @@ class Example8(Problem):
 		self.lidar_num_beams = 64
 		self.lidar_num_channels = 4
 		self.lidar_self_feature_dim = 8
-		self.policy_encoding_dim = self.lidar_self_feature_dim + self.lidar_num_beams * self.lidar_num_channels
+		self.policy_memory_feature_dim = self.memory_feature_dim
+		self.policy_encoding_dim = (
+			self.lidar_self_feature_dim
+			+ self.lidar_num_beams * self.lidar_num_channels
+			+ self.policy_memory_feature_dim
+		)
 		self.lidar_angles = 2.0 * np.pi * np.arange(self.lidar_num_beams, dtype=float) / self.lidar_num_beams
 		self.lidar_directions = np.stack((np.cos(self.lidar_angles), np.sin(self.lidar_angles)), axis=1)
 		self.lidar_half_beam_width = np.pi / self.lidar_num_beams
-		self.value_encoding_dim = self.state_dim
+		# Existing value models consume the physical state only.  New policy
+		# models consume the additional memory features below.
+		self.value_encoding_dim = self.base_state_dim
 
 		self.state_lims = np.array((
 			(-10,10),
@@ -513,6 +543,15 @@ class Example8(Problem):
 			(-self.pursuer_acc_lim, self.pursuer_acc_lim),
 			(-self.pursuer_acc_lim, self.pursuer_acc_lim),
 		))
+		memory_lims = np.tile(np.array((
+			(-20.0, 20.0),   # last visible opponent dx, dy
+			(-20.0, 20.0),
+			(-2.4, 2.4),     # last visible relative velocity dx, dy
+			(-2.4, 2.4),
+			(0.0, self.tf),   # age since the last visible opponent
+			(0.0, 1.0),       # current visibility flag
+		), dtype=float), (self.num_robots, 1))
+		self.state_lims = np.vstack((self.state_lims, memory_lims))
 		self.approx_dist = (self.state_lims[0,1] - self.state_lims[0,0]) / 10
 
 		self.obstacles = [
@@ -524,7 +563,7 @@ class Example8(Problem):
 			# np.array([[2.0,4.0], [-1.5,1.5]], dtype=float),    # 中间偏右
 		]
 
-		self.current_evader_speed_lim = 1.5
+		self.current_evader_speed_lim = 0.8
 		self.current_pursuer_speed_lim = 1.0
 		self.update_action_lims()
 		self.update_init_lims()
@@ -595,6 +634,10 @@ class Example8(Problem):
 			(0,0), (0,0),
 			(0,0), (0,0),
 		), dtype=float)
+		self.init_lims = np.vstack((
+			self.init_lims,
+			np.zeros((self.num_robots * self.memory_feature_dim, 2), dtype=float),
+		))
 	# 查询：判断指定机器人是否仍处于活跃状态
 	def is_active(self, state, robot):
 		return state[self.active_idxs[robot], 0] > 0.5
@@ -765,6 +808,97 @@ class Example8(Problem):
 				channel_distances[tie_mask, lower_priority] = max_range
 
 		return np.clip(channel_distances / max_range, 0.0, 1.0).reshape((-1, 1))
+
+	def _visible_cross_team_observation(self, state, robot):
+		"""Return the nearest visible opposing robot's relative pose and velocity.
+
+		The visibility test deliberately follows semantic_lidar(): an opposing
+		robot is observable only when at least one lidar beam intersects it before
+		any obstacle.  Keeping this test here, rather than using the simulator's
+		full-state distance alone, prevents the memory features from leaking
+		occluded target positions into policy training.
+		"""
+		state = np.asarray(state, dtype=float).reshape((-1, 1))
+		if not self.is_active(state, robot):
+			return None
+		origin = state[self.state_idxs[robot], 0].astype(float)
+		max_range = self.lidar_max_range()
+		nearest_obstacle = np.full(self.lidar_num_beams, max_range, dtype=float)
+		for obstacle in self.obstacles:
+			distances = self.ray_box_distances(origin, self.lidar_directions, obstacle)
+			nearest_obstacle = np.minimum(
+				nearest_obstacle,
+				np.where(np.isfinite(distances), distances, max_range),
+			)
+
+		best = None
+		for other_robot in range(self.num_robots):
+			if other_robot == robot or self.same_team(robot, other_robot):
+				continue
+			if not self.is_active(state, other_robot):
+				continue
+			rel = state[self.state_idxs[other_robot], 0].astype(float) - origin
+			distance = float(np.linalg.norm(rel))
+			if distance <= 1e-8 or distance > max_range:
+				continue
+			projection = self.lidar_directions @ rel
+			cross = (
+				self.lidar_directions[:, 0] * rel[1]
+				- self.lidar_directions[:, 1] * rel[0]
+			)
+			angles = np.abs(np.arctan2(cross, projection))
+			visible_beam = (
+				(projection > 0.0)
+				& (angles <= self.lidar_half_beam_width + 1e-8)
+				& (distance < nearest_obstacle - 1e-8)
+			)
+			if not np.any(visible_beam):
+				continue
+			if best is None or distance < best[0]:
+				other_vel = state[self.vel_idxs[other_robot], 0].astype(float)
+				own_vel = state[self.vel_idxs[robot], 0].astype(float)
+				best = (distance, rel, other_vel - own_vel)
+		return None if best is None else (best[1], best[2])
+
+	def _update_observation_memory(self, previous_state, next_state, dt):
+		"""Carry last-seen opposing-agent observations through a simulator step."""
+		previous_state = np.asarray(previous_state, dtype=float).reshape((-1, 1))
+		next_state = np.asarray(next_state, dtype=float).reshape((-1, 1))
+		for robot in range(self.num_robots):
+			memory_idx = self.memory_idxs[robot]
+			memory = np.array(previous_state[memory_idx, 0], copy=True)
+			previous_visible = memory[5] > 0.5
+			memory[4] = np.clip(float(memory[4]) + max(float(dt), 0.0), 0.0, self.tf)
+			memory[5] = 0.0
+			next_state[memory_idx, 0] = memory
+			observation = self._visible_cross_team_observation(next_state, robot)
+			if observation is not None:
+				rel, relative_velocity = observation
+				if float(dt) > 1e-8 and previous_visible:
+					# In the direct-integrator training dynamics stored velocities are
+					# reset after every step, so estimate relative velocity from two
+					# consecutive visible measurements when available.
+					relative_velocity = (
+						rel - previous_state[memory_idx[0:2], 0]
+					) / float(dt)
+				relative_velocity = np.clip(relative_velocity, -2.4, 2.4)
+				next_state[memory_idx[0:2], 0] = rel
+				next_state[memory_idx[2:4], 0] = relative_velocity
+				next_state[memory_idx[4], 0] = 0.0
+				next_state[memory_idx[5], 0] = 1.0
+		return next_state
+
+	def policy_memory_features(self, state, robot):
+		state = np.asarray(state, dtype=float).reshape((-1, 1))
+		memory = state[self.memory_idxs[robot], 0]
+		return np.array((
+			memory[0] / 20.0,
+			memory[1] / 20.0,
+			memory[2] / 2.4,
+			memory[3] / 2.4,
+			np.clip(memory[4] / max(self.tf, 1e-8), 0.0, 1.0),
+			np.clip(memory[5], 0.0, 1.0),
+		), dtype=float).reshape((-1, 1))
 
 	# 查询：判断指定机器人是否与障碍物发生碰撞
 	def check_obstacle_collision(self, state, robot):
@@ -1088,7 +1222,11 @@ class Example8(Problem):
 	def min_cross_team_dist(self, state):
 		min_dist = np.inf
 		for e in self.evaders:
+			if not self.is_active(state, e):
+				continue
 			for p in self.pursuers:
+				if not self.is_active(state, p):
+					continue
 				d = np.linalg.norm(state[self.state_idxs[e], :] - state[self.state_idxs[p], :])
 				min_dist = min(min_dist, d)
 		return min_dist
@@ -1104,6 +1242,44 @@ class Example8(Problem):
 		if len(distances) == 0:
 			return None
 		return min(distances)
+
+	def nearest_active_evader_distance(self, state, pursuer):
+		"""Distance from one active pursuer to its nearest active evader."""
+		if not self.is_active(state, pursuer):
+			return None
+		distances = [
+			np.linalg.norm(state[self.state_idxs[pursuer], :] - state[self.state_idxs[e], :])
+			for e in self.evaders
+			if self.is_active(state, e)
+		]
+		if len(distances) == 0:
+			return None
+		return min(distances)
+
+	def add_distance_progress_reward(self, reward, state, next_state):
+		"""Reward each robot for changing its own nearest-opponent distance.
+
+		Only robots active in both states receive this shaping term.  A capture
+		therefore keeps its terminal capture reward as the sole event signal,
+		instead of turning the transition to an inactive robot into an infinite
+		distance improvement.
+		"""
+		scale = max(4.0 * self.desired_distance, 1e-8)
+		for evader in self.evaders:
+			d0 = self.nearest_active_pursuer_distance(state, evader)
+			d1 = self.nearest_active_pursuer_distance(next_state, evader)
+			if d0 is None or d1 is None or not self.is_active(next_state, evader):
+				continue
+			delta = np.clip((d1 - d0) / scale, -1.0, 1.0)
+			reward[evader, 0] += self.evader_progress_reward_weight * delta
+
+		for pursuer in self.pursuers:
+			d0 = self.nearest_active_evader_distance(state, pursuer)
+			d1 = self.nearest_active_evader_distance(next_state, pursuer)
+			if d0 is None or d1 is None or not self.is_active(next_state, pursuer):
+				continue
+			delta = np.clip((d0 - d1) / scale, -1.0, 1.0)
+			reward[pursuer, 0] += self.pursuer_progress_reward_weight * delta
 
 	def add_evader_distance_reward(self, reward, state):
 		max_reward_distance = max(self.lidar_max_range() - self.desired_distance, 1e-8)
@@ -1168,11 +1344,14 @@ class Example8(Problem):
 				state[vel_idxs, 0] = 0.0
 			for acc_idxs in self.acc_idxs:
 				state[acc_idxs, 0] = 0.0
+			for memory_idx in self.memory_idxs:
+				state[memory_idx, 0] = 0.0
 			valid = (
 				not self.is_terminal(state)
 				and (self.min_cross_team_dist(state) > 2 * self.init_min_dist)
 				and all(self.has_spawn_clearance(state, robot) for robot in range(self.num_robots))
 			)
+		self._update_observation_memory(state, state, 0.0)
 		for robot in range(self.num_robots):
 			if self.is_active(state, robot):
 				self.cache_coeff_state_for_state(state, robot, self.coeff_state_from_state(state, robot))
@@ -1181,16 +1360,29 @@ class Example8(Problem):
 	# 游戏逻辑：计算归一化的单步奖励（捕获奖励 + 存活奖励 + 越界惩罚）
 	def normalized_reward(self,s,a):
 		s_next= self.step(s, a, self.dt)
+		return self.transition_reward(s, s_next)
+
+	def transition_reward(self, s, s_next):
 		r1 = 0.0
 		r2 = 0.0
 		reward = np.array([[r1], [r1], [r2], [r2]], dtype=float)
 		newly_captured = self.active_evader_count(s) - self.active_evader_count(s_next)
 		if newly_captured > 0:
 			t = min(s_next[self.time_idx, 0], self.tf)
-			evader_reward = 0.5*newly_captured * (t / self.tf)
+			evader_reward = -0.5*newly_captured * (1.0 - t / self.tf)
 			pursuer_reward = 0.5*newly_captured * (1.0 - t / self.tf)
 			reward[self.evaders, 0] = evader_reward
 			reward[self.pursuers, 0] = pursuer_reward
+		self.add_distance_progress_reward(reward, s, s_next)
+		# Optional compatibility term for reproducing the earlier global-potential
+		# protocol.  It is zero in the current protocol above.
+		d0 = self.min_cross_team_dist(s)
+		d1 = self.min_cross_team_dist(s_next)
+		if self.cross_team_distance_reward_weight != 0.0 and np.isfinite(d0) and np.isfinite(d1):
+			scale = max(4.0 * self.desired_distance, 1e-8)
+			delta = np.clip((d0 - d1) / scale, -1.0, 1.0)
+			reward[self.pursuers, 0] += self.cross_team_distance_reward_weight * delta
+			reward[self.evaders, 0] -= self.cross_team_distance_reward_weight * delta
 		if (s[self.time_idx, 0] < self.tf) and (s_next[self.time_idx, 0] >= self.tf):
 			#t = min(s_next[self.time_idx, 0], self.tf)
 			surviving_evaders = self.active_evader_count(s_next)
@@ -1246,6 +1438,7 @@ class Example8(Problem):
 			if coeff_state is None:
 				coeff_state = self.coeff_state_from_state(s_tp1, robot)
 			self.cache_coeff_state_for_state(s_tp1, robot, coeff_state)
+		self._update_observation_memory(s, s_tp1, dt)
 		return s_tp1
 
 	# 游戏逻辑：判断当前状态是否为终止状态（越界/全捕获/超时）
@@ -1267,20 +1460,23 @@ class Example8(Problem):
 		return np.vstack((
 			self.self_lidar_features(state, robot),
 			self.semantic_lidar(state, robot),
+			self.policy_memory_features(state, robot),
 		))
 
 	# 状态编码：生成价值网络输入编码
 	def value_encoding(self,state):
-		return np.asarray(state, dtype=float).reshape((-1, 1))
+		state = np.asarray(state, dtype=float).reshape((-1, 1))
+		return state[:self.base_state_dim, :]
 
 	# 数据分组：按非目标机器人状态将数据集分组（用于可视化）
 	def make_groups(self,encoding,target,robot):
 
 		num_datapoints = encoding.shape[0]
+		encoding_dim = encoding.shape[1]
 		groups = [] # list of list of lists
 		robot_idxs = self.state_idxs[robot]
 		not_robot_idxs = []
-		for i in range(self.state_dim):
+		for i in range(encoding_dim):
 			if i not in robot_idxs:
 				not_robot_idxs.append(i)
 
@@ -1603,8 +1799,8 @@ class Example8(Problem):
 			for group in groups:
 
 				data = np.array([np.array(xi) for xi in group])
-				encodings = data[:,0:self.state_dim]
-				target = data[:,self.state_dim:]
+				encodings = data[:,0:self.value_encoding_dim]
+				target = data[:,self.value_encoding_dim:]
 
 				# contour
 				if encodings.shape[0] > 100:
@@ -1627,7 +1823,7 @@ class Example8(Problem):
 					ax.set_ylim(self.state_lims[self.position_idx[0],:])
 
 				# plot other agents
-				state = group[0][0:self.state_dim]
+				state = group[0][0:self.value_encoding_dim]
 				for other_robot in range(self.num_robots):
 					if other_robot != robot:
 						other_robot_idxs = self.state_idxs[other_robot]
@@ -1653,8 +1849,8 @@ class Example8(Problem):
 			fig,ax = plt.subplots()
 
 			data = np.array([np.array(xi) for xi in group])
-			encodings = data[:,0:self.state_dim]
-			target = data[:,self.state_dim:]
+			encodings = data[:,0:self.policy_encoding_dim]
+			target = data[:,self.policy_encoding_dim:]
 			# quiver
 			C = np.linalg.norm(target[:,0:2],axis=1)
 			ax.quiver(encodings[:,robot_idxs[0]],encodings[:,robot_idxs[1]],\
@@ -1688,6 +1884,21 @@ class Example8(Problem):
 
 				fig,ax = plt.subplots()
 				inital_state = sim_result["states"][0]
+				trajectory_states = np.asarray(sim_result["states"])
+				# A policy field is evaluated at many hypothetical positions for one
+				# robot.  Keep a real historical observation snapshot while moving
+				# that robot through the grid; rebuilding memory from every sampled
+				# position would erase the very information the memory input is meant
+				# to carry and make all hidden-target arrows look like obstacle-only
+				# arrows.  Prefer a snapshot where this robot actually saw a target.
+				memory_reference = inital_state
+				memory_idx = self.memory_idxs[robot]
+				best_memory_score = float(memory_reference[memory_idx[5], 0])
+				for candidate in trajectory_states:
+					score = float(candidate[memory_idx[5], 0])
+					if score > best_memory_score:
+						memory_reference = candidate
+						best_memory_score = score
 
 				robot_idxs = self.state_idxs[robot]
 				not_robot_idxs = []
@@ -1700,6 +1911,12 @@ class Example8(Problem):
 				for _ in range(num_eval):
 					state = self.initialize()
 					state[not_robot_idxs,:] = inital_state[not_robot_idxs,:]
+					# The robot position is resampled above while all other physical
+					# positions are fixed.  Preserve the selected historical memory
+					# snapshot so this field tests hidden-target behaviour as well as
+					# instantaneous obstacle avoidance.
+					for memory_idx in self.memory_idxs:
+						state[memory_idx, :] = memory_reference[memory_idx, :]
 					states.append(state)
 				state_array = np.stack(states, axis=0)
 				state_points = state_array[:, :, 0]
@@ -1721,10 +1938,14 @@ class Example8(Problem):
 					policy_oracle = sim_result["instance"]["policy_oracle"]
 					actions = []
 					for state in states:
-						action = policy_oracle[robot].eval(self,state,robot)
+						if getattr(policy_oracle[robot], "name", None) == "gaussian":
+							action = policy_oracle[robot].eval(self, state, robot, stochastic=False)
+						else:
+							action = policy_oracle[robot].eval(self, state, robot)
 						actions.append(action)
 					actions = np.array(actions).squeeze(axis=2)
 					ax.quiver(state_points[:,robot_idxs[0]],state_points[:,robot_idxs[1]],actions[:,0],actions[:,1])
+					ax.set_title("Robot {} policy field (historical memory snapshot)".format(robot + 1))
 
 				# plot final trajectory , obstacles and limits
 				self.render(fig=fig,ax=ax,states=sim_result["states"])

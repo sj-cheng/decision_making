@@ -18,7 +18,12 @@ class Problem_Settings
         float mass; 
         float g; 
         float desired_distance;
-        float evader_distance_reward_weight = 0.02f;
+        float evader_distance_reward_weight = 0.0f;
+        // Legacy global potential shaping. The current Example8 protocol
+        // leaves this at zero and uses per-robot progress terms below.
+        float cross_team_distance_reward_weight = 0.0f;
+        float evader_progress_reward_weight = 0.0f;
+        float pursuer_progress_reward_weight = 0.0f;
         float state_control_weight; 
         float r_max; 
         float r_min; 
@@ -88,6 +93,25 @@ public:
         return reward;
     }
 
+    // Random rollouts may skip auxiliary observation updates that are only
+    // needed when a successor is expanded or evaluated by a policy network.
+    // Problems without auxiliary state can leave this as a no-op.
+    virtual void set_rollout_mode(bool enabled)
+    {
+        (void)enabled;
+    }
+
+    // Compute a one-step reward when the successor is already available.  The
+    // default preserves the old behavior for problems that do not override it.
+    virtual Eigen::Matrix<float, -1, 1> normalized_reward_from_next(
+        Eigen::Matrix<float, -1, 1> state,
+        Eigen::Matrix<float, -1, 1> action,
+        Eigen::Matrix<float, -1, 1> next_state)
+    {
+        (void)next_state;
+        return normalized_reward(state, action);
+    }
+
 
     Eigen::Matrix<float,-1,1> sample_state(std::default_random_engine & gen) 
     {
@@ -109,6 +133,14 @@ public:
         }
         return action;
     } 
+
+    // Random action used for unguided tree expansion and rollouts.
+    virtual Eigen::Matrix<float,-1,1> sample_rollout_action(
+        const Eigen::Matrix<float,-1,1> & state,
+        std::default_random_engine & gen)
+    {
+        return sample_action(gen);
+    }
     
 
     Eigen::Matrix<float,-1,1> initialize(std::default_random_engine & gen) 

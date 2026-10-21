@@ -8,6 +8,7 @@ import tempfile
 import itertools
 import time 
 import os
+import glob
 import multiprocessing as mp
 from collections import deque
 from tqdm import tqdm 
@@ -31,7 +32,7 @@ alpha_pw = 0.5
 C_exp = 1.0
 alpha_exp = 0.25
 beta_policy = 0.5
-beta_value = 0.5
+beta_value = 0.1
 parallel_on = True
 solver_name = "C_PUCT_V1"
 # solver_name = "PUCT_V1"
@@ -40,12 +41,32 @@ use_minco_dynamics = False  # True: MINCO, False: direct displacement propagatio
 policy_oracle_name = "gaussian"
 value_oracle_name = "deterministic"
 
-dirname = "../current/models"
+# Policy input/state semantics changed with the observation-memory features;
+# keep their datasets and checkpoints isolated from the old 264-input models.
+# This run uses the per-robot progress reward, deterministic policy diagnostics,
+# and the reachable-state mix below.  Keep its data separate from the older v2
+# targets, which were generated with the previous reward and search protocol.
+artifact_root = os.path.abspath(
+	os.path.join(os.path.dirname(__file__), "../current/memory_observation_v3")
+)
+dirname = "{}/models".format(artifact_root)
+data_dirname = "{}/data".format(artifact_root)
 plot_on= False	
+loss_plot_on = False
+# Evaluation arrays are only used to make diagnostic plots.  Keep this off
+# when plot_on is off; it avoids thousands of forward passes per iteration
+# without changing data generation or model fitting.
+eval_on = False
 # learning
 L = 80
-resume_training = True  # True: resume from existing models in dirname; False: start from scratch (clears models)
-mode = 1 # 0: weighted sum, 1: best child, 2: subsamples 
+# v3 is a new, empty root, so the first run starts from l=0.  Keeping resume
+# enabled thereafter lets an interrupted v3 run continue without deleting its
+# newly generated data; the old v2 root is never consulted.
+resume_training = True
+mode = 1 # 0: weighted mean, 1: best child, 2: visit samples, 3: visit moments
+# The old policy used 0.1 standard deviation before tanh scaling.  In the
+# physical action space this is approximately 5% of each action range.
+policy_noise_fraction = 0.05
 num_D_pi = 30000
 # num_D_pi = 500
 # num_D_pi = 200
@@ -64,6 +85,39 @@ train_test_split = 0.8
 replay_buffer_multiplier = 20
 policy_replay_buffers = None
 value_replay_buffer = None
+
+# Keep training states from collapsing onto the current policy's safe corner.
+# Initial states and random actions provide the search teacher with fresh
+# evasion geometries instead of repeatedly replaying small learned actions.
+reachable_initial_state_fraction = 0.35
+reachable_random_action_fraction = 0.20
+
+
+def get_dataset_fn(oracle_name, l, robot=0):
+	"""Return a versioned dataset path for the current policy interface."""
+	os.makedirs(data_dirname, exist_ok=True)
+	return "{}/{}_l{}_i{}.npy".format(data_dirname, oracle_name, l, robot)
+
+
+def get_oracle_fn(l, num_robots):
+	"""Return checkpoints matching the 270-input memory-aware policy."""
+	os.makedirs(dirname, exist_ok=True)
+	value_oracle_path = "{}/model_value_l{}.pt".format(dirname, l)
+	policy_oracle_paths = [
+		"{}/model_policy_l{}_i{}.pt".format(dirname, l, i)
+		for i in range(num_robots)
+	]
+	return value_oracle_path, policy_oracle_paths
+
+
+def prepare_artifact_dirs(clean=False):
+	os.makedirs(dirname, exist_ok=True)
+	os.makedirs(data_dirname, exist_ok=True)
+	if clean:
+		for directory in (dirname, data_dirname):
+			for path in glob.glob(os.path.join(directory, "*")):
+				if os.path.isfile(path):
+					os.remove(path)
 
 
 def split_work_count(total, num_workers):
@@ -152,47 +206,96 @@ class TensorBatchLoader:
 		return (self.size + self.batch_size - 1) // self.batch_size
 
 # policy demonstration functions 
-def sample_reachable_state(problem, policy_oracle=None):
-    state = problem.initialize()
+def sample_reachable_state(problem, policy_oracle=None, rollout_solver=None):
+	state = problem.initialize()
+	if np.random.random() < reachable_initial_state_fraction:
+		return state
 
-    if policy_oracle is not None and any(p is not None for p in policy_oracle):
-        rollout_solver = get_solver("NeuralNetwork", policy_oracle=policy_oracle)
-    else:
-        rollout_solver = None
+	if rollout_solver is None:
+		if policy_oracle is not None and any(p is not None for p in policy_oracle):
+			rollout_solver = get_solver(
+				"NeuralNetwork", policy_oracle=policy_oracle, policy_stochastic=True
+			)
+		else:
+			rollout_solver = None
 
-    k = np.random.randint(0, len(problem.times) - 1)
-    for _ in range(k):
-        if problem.is_terminal(state):
-            break
-        if rollout_solver is None:
-            action = problem.sample_action()
-        else:
-            action = rollout_solver.policy(problem, state)
-        state = problem.step(state, action, problem.dt)
+	k = np.random.randint(0, len(problem.times) - 1)
+	for _ in range(k):
+		if problem.is_terminal(state):
+			break
+		if rollout_solver is None or np.random.random() < reachable_random_action_fraction:
+			action = problem.sample_action()
+		else:
+			action = rollout_solver.policy(problem, state)
+		state = problem.step(state, action, problem.dt)
 
-    return state
+	return state
 
 def worker_edp_wrapper(arg):
 	return worker_edp(*arg)
 
-def make_policy_datapoints(problem, robot, state, actions, num_visits):
+def make_policy_datapoints(problem, robot, state, actions, num_visits, best_action=None):
 	robot_action_idx = problem.action_idxs[robot]
 	encoding = problem.policy_encoding(state, robot).squeeze()
+	visit_weights = np.asarray(num_visits, dtype=float).reshape(-1)
+	visit_weights = np.maximum(visit_weights, 0.0)
+	weight_sum = float(np.sum(visit_weights))
+	if weight_sum <= 0.0 or len(actions) == 0:
+		raise ValueError("MCTS child distribution has no positive visits")
+	visit_weights /= weight_sum
+	all_actions = np.asarray(actions, dtype=float)
+	if all_actions.ndim == 3 and all_actions.shape[-1] == 1:
+		all_actions = all_actions[..., 0]
+	if all_actions.ndim != 2:
+		raise ValueError("MCTS child actions must be a two-dimensional array")
 
 	if mode == 0:
-		robot_actions = np.array(actions)[:, robot_action_idx]
-		target = np.average(robot_actions, weights=num_visits, axis=0)
+		robot_actions = all_actions[:, robot_action_idx]
+		target = np.average(robot_actions, weights=visit_weights, axis=0)
 		return [np.append(encoding, target)]
 	elif mode == 1:
-		target = np.array(actions[np.argmax(num_visits)])[robot_action_idx]
+		# Use the backed-up Q-best action returned by the solver.  Visit counts
+		# are often nearly uniform under progressive widening and otherwise
+		# select an exploratory child arbitrarily.
+		if best_action is None:
+			best_idx = int(np.argmax(visit_weights))
+			mean = all_actions[best_idx][robot_action_idx]
+		else:
+			mean = np.asarray(best_action, dtype=float).reshape(-1)[robot_action_idx]
+		limits = problem.action_lims[robot_action_idx, 1] - problem.action_lims[robot_action_idx, 0]
+		fixed_sd = policy_noise_fraction * np.asarray(limits, dtype=float)
+		logvar = np.log(np.maximum(np.square(fixed_sd), 1e-8))
+		target = np.concatenate((mean, logvar), axis=0)
 		return [np.append(encoding, target)]
 	elif mode == 2:
-		choice_idxs = np.random.choice(len(actions), num_subsamples, p=num_visits / np.sum(num_visits))
+		choice_idxs = np.random.choice(len(actions), num_subsamples, p=visit_weights)
 		return [
-			np.append(encoding, np.array(actions[choice_idx])[robot_action_idx])
+			 np.append(encoding, all_actions[choice_idx][robot_action_idx])
 			for choice_idx in choice_idxs
 		]
+	elif mode == 3:
+		# Preserve both the preferred direction and ambiguity between competing
+		# children.  The variance is expressed in physical action units so the
+		# policy can sample with the same limits at Python and C++ inference.
+		robot_actions = all_actions[:, robot_action_idx]
+		mean = np.sum(robot_actions * visit_weights[:, None], axis=0)
+		variance = np.sum(np.square(robot_actions - mean) * visit_weights[:, None], axis=0)
+		limits = problem.action_lims[robot_action_idx, 1] - problem.action_lims[robot_action_idx, 0]
+		variance_floor = np.square(0.02 * np.asarray(limits, dtype=float))
+		logvar = np.log(np.maximum(variance, variance_floor))
+		target = np.concatenate((mean, logvar), axis=0)
+		return [np.append(encoding, target)]
 	raise ValueError("unsupported policy dataset mode: {}".format(mode))
+
+
+def robot_policy_target(root_node, robot):
+	"""Use individual-Q action credit when the C++ search exposes it."""
+	per_robot = getattr(root_node, "best_actions", None)
+	if per_robot is not None:
+		per_robot = np.asarray(per_robot)
+		if per_robot.ndim == 2 and per_robot.shape[0] > int(robot):
+			return per_robot[int(robot)]
+	return root_node.best_action
 
 def worker_edp(rank,queue,seed,fn,problem,robot,num_per_pool,policy_oracle,value_oracle):
 
@@ -213,13 +316,18 @@ def worker_edp(rank,queue,seed,fn,problem,robot,num_per_pool,policy_oracle,value
 			beta_policy= beta_policy,
 			beta_value = beta_value
 			)
+	rollout_solver = (
+		get_solver("NeuralNetwork", policy_oracle=policy_oracle, policy_stochastic=True)
+		if policy_oracle is not None and any(p is not None for p in policy_oracle)
+		else None
+	)
 	
 	robot_action_idx = problem.action_idxs[robot]
 	count = 0
 	failure_count = 0
  
 	while count < num_per_pool:
-		state = sample_reachable_state(problem, policy_oracle)
+		state = sample_reachable_state(problem, policy_oracle, rollout_solver)
 		if problem.is_terminal(state):
 			continue
 		if hasattr(problem, "is_active") and not problem.is_active(state, robot):
@@ -237,7 +345,12 @@ def worker_edp(rank,queue,seed,fn,problem,robot,num_per_pool,policy_oracle,value
   		# print('rank: {}, completion: {}, success: {}'.format(rank,len(datapoints)/num_per_pool,root_node.success))
 		if root_node.success:
 			actions,num_visits = solver.get_child_distribution(root_node)
-			datapoints.extend(make_policy_datapoints(problem, robot, state, actions, num_visits))
+			datapoints.extend(
+				make_policy_datapoints(
+					problem, robot, state, actions, num_visits,
+					robot_policy_target(root_node, robot)
+				)
+			)
 
 			count += 1
 			update_tqdm(rank,1,queue,pbar)
@@ -274,9 +387,14 @@ def worker_edp_group(rank, queue, seed, fns, problem, robot_group, num_per_pool,
 			beta_policy= beta_policy,
 			beta_value = beta_value
 			)
+	rollout_solver = (
+		get_solver("NeuralNetwork", policy_oracle=policy_oracle, policy_stochastic=True)
+		if policy_oracle is not None and any(p is not None for p in policy_oracle)
+		else None
+	)
 
 	while any(counts_by_robot[robot] < num_per_pool for robot in robot_group):
-		state = sample_reachable_state(problem, policy_oracle)
+		state = sample_reachable_state(problem, policy_oracle, rollout_solver)
 		if problem.is_terminal(state):
 			continue
 
@@ -295,7 +413,10 @@ def worker_edp_group(rank, queue, seed, fns, problem, robot_group, num_per_pool,
 			num_added = 0
 			for robot in needed_robots:
 				datapoints_by_robot[robot].extend(
-					make_policy_datapoints(problem, robot, state, actions, num_visits)
+						make_policy_datapoints(
+							problem, robot, state, actions, num_visits,
+							robot_policy_target(root_node, robot)
+						)
 				)
 				counts_by_robot[robot] += 1
 				num_added += 1
@@ -508,7 +629,8 @@ def worker_edv(rank,queue,fn,seed,problem,num_states_per_pool,policy_oracle):
 
 	solver = get_solver(
 			"NeuralNetwork",
-			policy_oracle=policy_oracle)
+			policy_oracle=policy_oracle,
+			policy_stochastic=True)
 
 	instance = {
 		"problem" : problem,
@@ -520,7 +642,7 @@ def worker_edv(rank,queue,fn,seed,problem,num_states_per_pool,policy_oracle):
 	pbar = init_tqdm(rank,num_states_per_pool) if queue is None else None
 	datapoints = []
 	while len(datapoints) < num_states_per_pool:	
-		state = sample_reachable_state(problem, policy_oracle)
+		state = sample_reachable_state(problem, policy_oracle, solver)
 		if problem.is_terminal(state):
 			continue
 		instance["initial_state"] = state
@@ -617,10 +739,10 @@ def make_expert_demonstration_v(problem, l):
 
 def calculate_value(problem,sim_result):
 	value = np.zeros((problem.num_robots,1))
-	states = sim_result["states"]
-	actions = sim_result["actions"]
-	for step,(state,action) in enumerate(zip(states,actions)):
-		reward = problem.normalized_reward(state,action)
+	# run_instance already computed and stored each reward. Recomputing
+	# normalized_reward here would advance the dynamics a second time for every
+	# step (and update observation memory again) while producing the same label.
+	for step,reward in enumerate(sim_result["rewards"]):
 		value += (problem.gamma ** step) * reward 
 	return value 
 
@@ -662,6 +784,7 @@ def train_model(problem,train_dataset,test_dataset,l,oracle_name,robot=0,resume_
 	print('training model...')
 
 	device = "cuda" if torch.cuda.is_available() else "cpu"
+	print("policy/value training device: {}".format(device))
 	value_oracle_path, policy_oracle_paths = get_oracle_fn(l,problem.num_robots)
 
 	if oracle_name == "policy":
@@ -722,7 +845,7 @@ def train_model(problem,train_dataset,test_dataset,l,oracle_name,robot=0,resume_
 			best_test_loss = test_epoch_loss
 			state_dict_cpu = {k: v.detach().cpu() for k, v in model.state_dict().items()}
 			torch.save(state_dict_cpu,model_fn)
-	if 1:
+	if loss_plot_on:
 		plotter.plot_loss(losses)
 		plotter.save_figs("{}/losses_{}_l{}_i{}.pdf".format(dirname,oracle_name,l,robot))
 	print('training model completed in {}s.'.format(time.time()-start_time))
@@ -817,7 +940,8 @@ def eval_policy(problem,l,robot):
 		if hasattr(policy_oracle, "scale_action"):
 			mu = policy_oracle.scale_action(mu)
 		mu = mu.detach().numpy().reshape((robot_action_dim,1))
-		sd = np.sqrt(np.exp(logvar.detach().numpy().reshape((robot_action_dim,1))))
+		sd = np.sqrt(np.exp(np.clip(
+			logvar.detach().numpy().reshape((robot_action_dim, 1)), -8.0, 2.0)))
 		action = np.concatenate((mu,sd),axis=0)
 		states.append(state)
 		actions.append(action)
@@ -835,7 +959,8 @@ def eval_policy(problem,l,robot):
 def self_play(problem,policy_oracle,value_oracle,l):
 	solver = get_solver(
 			"NeuralNetwork",
-			policy_oracle=policy_oracle)
+			policy_oracle=policy_oracle,
+			policy_stochastic=False)
 
 	instance = {
 		"problem" : problem,
@@ -870,10 +995,7 @@ if __name__ == '__main__':
 	if hasattr(problem, 'use_minco_dynamics'):
 		problem.use_minco_dynamics = use_minco_dynamics
 
-	if resume_training:
-		format_dir(clean_dirnames=["data"])
-	else:
-		format_dir(clean_dirnames=["data","models"])
+	prepare_artifact_dirs(clean=not resume_training)
 
 	num_D_pi_samples = num_D_pi
 	if mode == 2:
@@ -936,7 +1058,8 @@ if __name__ == '__main__':
 						robot=robot,
 						resume_from_existing=resume_training,
 					)
-					eval_policy(problem,l,robot)
+					if eval_on:
+						eval_policy(problem,l,robot)
 		else:
 			for robot in range(problem.num_robots):
 				print('\t policy training iteration l/L, i/N: {}/{} {}/{}...'.format(\
@@ -944,10 +1067,12 @@ if __name__ == '__main__':
 				train_dataset_pi, test_dataset_pi = make_expert_demonstration_pi(\
 					problem,robot,policy_oracle,value_oracle)
 				train_model(problem,train_dataset_pi,test_dataset_pi,l,"policy",robot=robot,resume_from_existing=resume_training)
-				eval_policy(problem,l,robot)
+				if eval_on:
+					eval_policy(problem,l,robot)
 
 		print('\t value training l/L: {}/{}'.format(l,L))
 		train_dataset_v, test_dataset_v = make_expert_demonstration_v(problem, l)
 		train_model(problem,train_dataset_v,test_dataset_v,l,"value",resume_from_existing=resume_training)
-		eval_value(problem,l)
+		if eval_on:
+			eval_value(problem,l)
 		print('complete learning iteration: {}/{} in {}s'.format(l,L,time.time()-start_time))

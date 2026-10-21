@@ -1,5 +1,36 @@
-**__pycache__**
-**/build/**
-**/.vscode/**
-current/**
-saved/**
+# Python bytecode and local tool caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# CMake build trees and compiled artifacts
+build/
+/code/cpp/build_*/
+cmake-build-*/
+*.so
+*.o
+*.a
+
+# Local editor configuration
+.vscode/
+
+# Experiment outputs and checkpoints (keep the existing current/ exclusion)
+/current/
+/code/current/
+/saved/
+
+# Local snapshots made before the search implementation fix
+/backup_pre_search_fix_*/
+
+# Generated manuscript files; keep example.tex and ieeeconf.cls
+/example.pdf
+/example.aux
+/example.log
+/example.out
+/example.fdb_latexmk
+/example.fls
+/example.synctex.gz

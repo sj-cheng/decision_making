@@ -1,0 +1,1069 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Low-Budget Search-Guided Decision Making for Multi-Robot Pursuit--Evasion with Local Sensing
+% Conference manuscript based on the IEEE conference template.
+%
+% Compile with pdfLaTeX / latexmk -pdf example.tex.
+% The adjacent ieeeconf.cls is the unmodified PaperCept robotics template:
+% https://ras.papercept.net/conferences/support/tex.php
+% This is the IROS / RA-L initial-submission layout. RA-L accepted papers
+% require a separate IEEEtran journal layout; do not mix the two styles.
+% The current tables are retained as a record of the v5 benchmark while the
+% corrected search implementation is being re-evaluated.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%2345678901234567890123456789012345678901234567890123456789012345678901234567890
+%        1         2         3         4         5         6         7         8
+
+\documentclass[letterpaper,10pt,conference]{ieeeconf}
+
+\IEEEoverridecommandlockouts
+\overrideIEEEmargins
+
+\usepackage[T1]{fontenc}
+\usepackage{times}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{bm}
+\usepackage{microtype}
+\usepackage{cite}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+
+% Keep class-defined margins, headings, captions, and display spacing.
+% Continuation lines in pseudocode align with the current block, without
+% creating extra line numbers or losing the indentation of nested loops.
+\algrenewcommand\algorithmicindent{1em}
+\newcommand{\algcont}[1]{\Statex\hspace{\algorithmicindent}#1}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+
+% Hardware sections are kept in the source until the physical evaluation is
+% complete, but are hidden from the current manuscript.
+\newif\ifshowhardware
+\showhardwarefalse
+\newcommand{\placeholderfig}[2]{%
+  \fbox{\parbox[c][#1][c]{0.94\linewidth}{\centering\small\itshape #2}}}
+% ------------------------------------------------------------------------------
+
+\title{\LARGE\bfseries
+Low-Budget Search-Guided Decision Making for Multi-Robot Pursuit--Evasion with Local Sensing
+}
+
+\author{Jincheng Shi$^{1}$ % <-this % stops a space
+\thanks{$^{1}$Jincheng Shi is with the School of Automation,
+        Beijing Institute of Technology, Beijing 100081, China.}%
+}
+
+\begin{document}
+
+\maketitle
+\thispagestyle{empty}
+\pagestyle{empty}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{abstract}
+Online search can improve adversarial decisions, but its cost grows with
+the number of simulations. We study low-budget decision making for
+continuous-space multi-robot pursuit--evasion by combining online search
+with policies distilled from search experience. A team-alternating Monte
+Carlo tree search labels states reached by the current policies; the
+resulting labels train decentralized semantic-LiDAR policies and a value
+model, which in turn guide candidate expansion and leaf evaluation during
+deployment. The resulting controller can trade direct policy execution
+against online lookahead as the available computation changes. Cross-play
+experiments show that learned guidance and search budget affect pursuit
+and evasion differently, motivating role-wise evaluation rather than a
+single aggregate score. The formulation also defines the interface to a
+kinodynamic execution layer for future robot experiments.
+
+\end{abstract}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{INTRODUCTION}
+
+Multi-robot pursuit--evasion requires each team to coordinate while
+responding to an opponent whose actions change the value of every joint
+decision. Continuous actions, mutual elimination, and a finite decision
+period make the problem difficult even in a bounded planar environment
+\cite{isaacs1965differential,garcia2021multiple}.
+
+Tree search evaluates candidate actions online and can adapt to a changing
+opponent, but its cost grows with the simulation budget. A learned policy
+amortizes computation offline and is fast at execution, but can lose the
+lookahead needed for adversarial decisions. Search-guided learning methods
+have combined these two forms of computation in multi-robot planning
+\cite{riviere2021neural}. Here we ask how much of the benefit of lookahead
+can be retained when learned guidance is used to allocate a smaller search
+budget in a two-team game.
+
+The two roles also make aggregate scores hard to interpret. A controller
+that captures a weak evader need not resist a strong pursuer, and a long
+episode does not by itself establish successful evasion. We therefore use
+cross-play, in which every candidate controls both teams against every
+other candidate, and report pursuit and evasion separately.
+
+We formulate a bounded multi-pursuer multi-evader game with mutual
+elimination at capture. Team-alternating MCTS supplies action labels on
+states reached by the current policies. Per-agent policies are trained by
+behavior cloning from these labels, while a value model predicts returns
+for leaf evaluation. At deployment, policy proposals and value estimates
+are mixed with ordinary progressive widening, so the same learned models
+support direct execution and budgeted search. The policies use local
+semantic-LiDAR observations; the current search and value modules use the
+simulator state.
+
+In a 2v2 simulation benchmark, the resulting controller provides an
+intermediate operating point between direct policy execution and
+unguided search. The cross-play results also expose a role-dependent
+trade-off: increasing the search budget and adding learned guidance do
+not affect pursuit and evasion in the same way.
+
+The contributions of this work are:
+\begin{enumerate}
+  \item A team-alternating search-guided controller for continuous-action
+        multi-robot pursuit--evasion, with vector backups and separate
+        per-agent policy distillation.
+  \item A deployment rule that combines local policy proposals and learned
+        value estimates with progressive widening under a finite search
+        budget.
+  \item A two-sided cross-play evaluation that examines the budget--quality
+        trade-off separately for pursuit and evasion.
+\end{enumerate}
+
+\section{RELATED WORK}
+
+\subsection{Pursuit--Evasion Games}
+
+PE games originate from Isaacs' differential games
+\cite{isaacs1965differential}. Analytical and
+semi-analytical solutions exist for structured cases, e.g. multi-player
+reach-avoid games \cite{garcia2021multiple}, games with one superior
+evader \cite{chen2016multiplayer}, and multi-pursuer interception
+\cite{pierson2017intercepting}, but they rely on simplified dynamics and
+full state information. Sensing limitations have been studied in
+visibility-based formulations over polygonal environments
+\cite{zhang2019tree}, which typically discretize space and
+assume reactive rather than learned opponents. In contrast, we target
+continuous space, continuous actions, and adversarial opponents that are
+themselves produced by strong search.
+
+\subsection{Tree Search for Adversarial Planning}
+
+MCTS with UCT selection \cite{kocsis2006bandit,browne2012survey} is a
+standard framework for online adversarial planning. Continuous actions are
+handled with progressive widening \cite{couetoux2011continuous,
+chaslot2008progressive}, while learned priors can bias expansion
+\cite{rosin2011multi,auer2002finite}. Neural Tree Expansion combines
+expert search with learned policy and value guidance for multi-robot
+planning \cite{riviere2021neural}. We use the same broad teacher--student
+idea in a mutual-elimination pursuit--evasion game, where the tree
+alternates between teams and the policies are distilled independently for
+each agent. The evaluation focuses on the effect of this design on the
+budget--quality trade-off and on the difference between pursuit and
+evasion.
+
+\subsection{Learning-Based Multi-Agent Decision Making}
+
+MARL methods such as MADDPG \cite{lowe2017multi} and MAPPO
+\cite{yu2021surprising} learn policies through self-play
+\cite{baker2020emergent} and can execute with little online computation.
+Recent work has applied learned policies to pursuit--evasion under sensing
+constraints \cite{gonultas2025pursuit,wang2024viper} and to multi-UAV
+pursuit with online planning \cite{chen2025online}. These methods provide
+useful fast baselines, but opponent-dependent evaluation remains essential
+in adversarial tasks. Search-guided learning is also related to AlphaZero,
+Expert Iteration, and behavior cloning from reachable states
+\cite{silver2018general,anthony2017thinking,pomerleau1989alvinn,
+ross2011reduction}. Our method combines these ingredients with a
+team-alternating tree and decentralized action heads for the pursuit--
+evasion setting.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{PROBLEM FORMULATION}
+
+\subsection{Two-Team Pursuit--Evasion Game}
+
+We consider a multi-pursuer multi-evader game in a bounded planar region
+$\Omega\subset\mathbb R^2$. The evader team
+$\mathcal{E}=\{E_1,\ldots,E_{n_E}\}$ and the pursuer team
+$\mathcal{P}=\{P_1,\ldots,P_{n_P}\}$ contain $n_E$ and $n_P$ robots,
+respectively, with $N_r=n_E+n_P$ total agents. Equal-size $n$-versus-$n$
+games are a special case. Index agents in evader-then-pursuer order.
+The teams act at discrete decision times
+$k$ with period $\Delta t$. Agent $i$ has position
+$\mathbf{p}_{i,k}\in\mathbb{R}^2$ and alive flag
+$z_{i,k}\in\{0,1\}$. The system state stacks positions, the elapsed time
+$t_k$, and the alive flags:
+\begin{equation}
+\begin{aligned}
+s_k={}&[\mathbf p_{1,k}^{T},\ldots,\mathbf p_{N_r,k}^{T},\\[-1mm]
+      &\quad t_k,z_{1,k},\ldots,z_{N_r,k}]^{T}
+      \in\mathbb R^{3N_r+1}.
+\end{aligned}
+\end{equation}
+For the MINCO-enabled simulator we augment this decision state with the
+two-dimensional velocity and acceleration of each robot,
+\begin{equation}
+\begin{aligned}
+\bar s_k={}&[s_k^T,\mathbf v_{1,k}^T,\ldots,\mathbf v_{N_r,k}^T,\\[-1mm]
+            &\quad\mathbf a_{1,k}^T,\ldots,\mathbf a_{N_r,k}^T]^T
+            \in\mathbb R^{7N_r+1}.
+\end{aligned}
+\end{equation}
+The decision state specifies the game variables. The simulator uses
+the augmented representation in both execution modes; velocity and
+acceleration components are zero in the direct-propagation benchmark.
+
+Each agent commands a bounded 2-D displacement
+\begin{equation}
+a_{i,k}=\Delta\mathbf{p}_{i,k}\in\mathbb{R}^2,\qquad
+\|a_{i,k}\|_\infty \le v_i^{\max}\Delta t ,
+\end{equation}
+and the joint action
+\begin{equation}
+\begin{aligned}
+\mathbf a_k={}&[a_{1,k}^{T},\ldots,a_{N_r,k}^{T}]^{T}
+                 \in\mathbb R^{2N_r},\\
+s_{k+1}={}&F(s_k,\mathbf a_k).
+\end{aligned}
+\end{equation}
+In direct propagation, alive agents advance by their bounded commands;
+dead agents stay fixed. Commands within the action box may still produce
+an invalid next state, which terminates the episode.
+
+A capture occurs when a pursuer--evader pair comes within the capture
+distance $d_c$:
+\begin{equation}
+\|\mathbf{p}_{P_i,k+1}-\mathbf{p}_{E_j,k+1}\|_2 < d_c .
+\end{equation}
+Multiple simultaneous captures are resolved by a nearest-first one-to-one
+matching, and both members of a matched pair are deactivated
+(\emph{mutual-elimination} rule). An episode terminates when either team
+is fully inactive, the horizon $T$ is reached, or the state becomes
+invalid:
+\begin{equation}
+\mathrm{Term}(s_{k+1}) =
+\mathbb{I}\!\left[
+ \begin{aligned}
+ &N_E(s_{k+1})=0 \;\vee\; N_P(s_{k+1})=0\\[-1mm]
+ &{}\vee\; t_{k+1}\ge T \;\vee\; \mathrm{invalid}(s_{k+1})
+ \end{aligned}
+\right],
+\end{equation}
+with $N_E(s_k)=\sum_{i\in\mathcal{E}}z_{i,k}$ and
+$N_P(s_k)=\sum_{i\in\mathcal{P}}z_{i,k}$.
+
+Let $c_k=N_E(s_k)-N_E(s_{k+1})$ count new captures. The shared
+capture terms and horizon bonus are
+\begin{equation}
+\begin{aligned}
+b_{P,k}&=w_c c_k(1-t_{k+1}/T),\\
+b_{E,k}&=w_c c_k t_{k+1}/T
+ +w_c N_E(s_{k+1})\mathbb I[t_k<T\le t_{k+1}],
+\end{aligned}
+\end{equation}
+where $w_c$ is the capture-reward weight. Each active evader additionally
+receives a distance-shaping term
+\begin{equation}
+g_{i,k}=w_d\,\operatorname{clip}_{[0,1]}
+ \left(\frac{d_i(s_{k+1})-d_c}{d_{\max}-d_c}\right),
+\end{equation}
+where $d_i$ is the distance to the nearest active pursuer, $w_d=0.02$,
+and $g_{i,k}=0$ when the evader is inactive or no active pursuer remains.
+Thus $r_{i,k}=b_{E,k}+g_{i,k}$ for evaders and $r_{j,k}=b_{P,k}$ for
+pursuers. If any member of a team violates the arena or obstacle
+constraints, the reward of every member of that team is overwritten
+with $-1$. Each team maximizes its own discounted return with
+$\gamma=1$. Returns reported below sum rewards over the team members;
+the distance term makes this game non-constant-sum.
+
+\subsection{Observation Models}
+\label{sec:observations}
+
+The completed benchmark uses full simulator state for the search root
+and value network. Per-agent distilled policies use the semantic LiDAR
+encoding below; the MAPPO comparator uses normalized full state.
+Consequently, full-state planning and local policy observations coexist: 
+the fused solver is not an end-to-end partially observed planner.
+
+In the \emph{local-perception} setting, agent $i$ receives
+\begin{equation}
+o_{i,k}=\phi_i(\bar s_k,\mathcal O)
+=[\mathbf q_{i,k}^{T},\mathbf l_{i,k}^{T}]^{T},
+\end{equation}
+where $\mathcal{O}$ is a set of static rectangular obstacles,
+$\mathbf{q}_{i,k}\in\mathbb{R}^8$ is a normalized ego encoding (alive
+flag, position, velocity, acceleration, remaining time), and
+$\mathbf{l}_{i,k}$ encodes a semantic LiDAR. The LiDAR casts $N_b$
+uniformly spaced rays with fixed headings $\theta_m=2\pi m/N_b$ over
+$N_c=4$ semantic channels (teammate, opponent, obstacle, boundary) with
+range $d_{\max}$. Obstacles occlude dynamic targets: if a target and an
+obstacle lie along ray $m$ at distances $d_{\mathrm{tar}}$ and
+$d_{\mathrm{obs}}$, the effective reading is
+\begin{equation}
+d_{m,c} =
+\begin{cases}
+d_{\mathrm{tar}}, & d_{\mathrm{tar}} \le \min(d_{\mathrm{obs}}, d_{\max}),\\
+d_{\max}, & \text{otherwise}.
+\end{cases}
+\end{equation}
+The normalized matrix $L_{i,k}(m,c)=d_{m,c}/d_{\max}$ is flattened into
+$\mathbf{l}_{i,k}$, giving a $264$-dimensional observation for
+$N_b=64$; values near $0$ indicate nearby entities and $1$ no
+detection.
+
+\subsection{Objective and Deployment Constraints}
+
+Each side seeks a per-agent policy
+$\pi_i(o_{i,k})\mapsto a_{i,k}$ that maximizes its team return while
+respecting a per-step computation budget $B$ (tree-search simulations)
+and, on hardware, the latency budget of the decision period. We therefore
+evaluate decision quality (capture rate, capture/survival time, return,
+safety violations) jointly with online cost (per-step decision latency).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{SEARCH-GUIDED POLICY DISTILLATION}
+
+\subsection{Overview}
+
+Fig.~\ref{fig:overview} summarizes the offline training and online
+deployment stages.
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=\textwidth]{figures/overview.pdf}
+\caption{Overview of the search-guided controller. Offline, reachable
+states are labeled by a team-alternating expert search and used to train
+decentralized policy and value models. Online, local policy proposals and
+learned leaf values guide a smaller search before the selected action is
+executed by the dynamics layer.}
+\label{fig:overview}
+\end{figure*}
+
+The framework closes a loop between three
+modules---an expert search module, decentralized policies distilled
+from it, and a value network estimating long-term team returns.
+The standalone policies act from local encodings; the current fused
+search operates on the simulator state at team level.
+Offline, reachable states are annotated by a high-budget MCTS and
+consumed by behavior cloning and value regression with time-weighted
+replay; online, a small-budget search reuses the learned policy as a
+candidate-action prior ($\beta_\pi$) and the value network as a leaf
+evaluator ($\beta_v$). Algorithm~\ref{alg:sgpd} summarizes the loop.
+
+\begin{algorithm}[t]
+\caption{Search-Guided Policy Distillation (SGPD)}
+\label{alg:sgpd}
+\small
+\begin{algorithmic}[1]
+\Require Training rounds $L$; budgets $B_{\mathrm{train}}$,
+\algcont{$B_{\mathrm{deploy}}$; guidance probabilities $\beta_\pi$, $\beta_v$}
+\Ensure Per-agent policies $\hat\pi_{\theta_i}$; value model $V_\eta$
+\For{$l=0$ \textbf{to} $L-1$}
+  \State Roll out current policies to collect states
+  \algcont{$\mathcal{S}_\pi=\{s^{(j)}\}$}
+  \For{each $s^{(j)}\in\mathcal{S}_\pi$}
+    \State Run team-alternating MCTS
+    \algcont{with budget $B_{\mathrm{train}}$ (Sec.~\ref{sec:expert})}
+    \State $c_j^*\gets\arg\max_c Q_c^{(\rho_0)}$
+    \State $\mathbf{a}^{*(j)}\gets\mathbf{a}_{0\to c_j^*}$
+    \State Roll out the current joint policy
+    \algcont{from $s^{(j)}$ to termination}
+    \State Compute return targets $\mathbf{v}^{*(j)}$ using
+    \algcont{\eqref{eq:value_target}}
+  \EndFor
+  \State Update each $\theta_i$ using \eqref{eq:bc_loss}
+  \algcont{with replay weights \eqref{eq:replay}}
+  \State Update $\eta$ using \eqref{eq:value_loss}
+\EndFor
+\Statex \textbf{Online deployment (after training)}
+\State At each step, run search with $B_{\mathrm{deploy}}$,
+\algcont{policy proposals \eqref{eq:pw_guided} with probability $\beta_\pi$,}
+\algcont{and learned leaf evaluation with probability $\beta_v$;}
+\algcont{or execute $\hat\pi$ directly when $B_{\mathrm{deploy}}=0$}
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Expert Action Generation by Team-Alternating MCTS}
+\label{sec:expert}
+
+A search node stores
+\begin{equation}
+\begin{aligned}
+n={}&(s_n,\mathbf a_{p\to n},d_n,N_n,
+       \mathbf W_n,\mathbf Q_n,\mathcal C_n),\\
+\mathbf Q_n={}&\mathbf W_n/N_n .
+\end{aligned}
+\end{equation}
+where $\mathbf W_n,\mathbf Q_n\in\mathbb R^{N_r}$ are cumulative and
+mean value \emph{vectors} over the $N_r$ agents.
+Edges carry full joint actions
+\begin{equation}
+\begin{aligned}
+\mathbf a&=(\mathbf a^{\mathcal E},\mathbf a^{\mathcal P}),\\
+\mathbf a^{\mathcal E}&=(a_{E_1},\ldots,a_{E_{n_E}}),\\
+\mathbf a^{\mathcal P}&=(a_{P_1},\ldots,a_{P_{n_P}}).
+\end{aligned}
+\end{equation}
+Every expansion advances the complete adversarial state
+$s_c=F(s_n,\mathbf{a}_{n\to c})$. A root query is made for one team at
+a time; the tree alternates the two team groups, and only the queried
+team's slice of the selected joint action is executed.
+
+Because the two teams have opposing interests, the evaluator alternates
+by depth. With root evaluator $\rho_0$ and opponent $\bar{\rho}_0$,
+\begin{equation}
+\rho_n=
+\begin{cases}
+\rho_0, & d_n \bmod 2 = 0,\\
+\bar{\rho}_0, & d_n \bmod 2 = 1,
+\end{cases}
+\label{eq:alternating}
+\end{equation}
+and branch selection compares only the scalar component
+$Q_c^{(\rho_n)}$ of the value vector, so odd and even layers maximize the
+opponent's and the root team's interests respectively.
+
+Since the joint action space is continuous, full enumeration is
+impossible. Each node maintains a finite candidate set
+$\mathcal{A}(n)=\{\mathbf{a}_{n\to c}\mid c\in\mathcal{C}_n\}$ grown by
+progressive widening,
+\begin{equation}
+M(n)=\left\lceil C_{\mathrm{pw}}\,N_n^{\alpha_{\mathrm{pw}}}\right\rceil ,
+\label{eq:pw}
+\end{equation}
+with hyperparameters $(C_{\mathrm{pw}},\alpha_{\mathrm{pw}})$. New
+candidates mix uniform sampling with the distilled policy prior. A shared
+Bernoulli draw selects the proposal source for the joint candidate; in
+the guided case, each active robot uses its own policy output:
+\begin{equation}
+\tilde a_i\sim
+\begin{cases}
+\hat\pi_{\theta_i}(\cdot\mid \phi_i(s_n)),&
+\xi<\beta_\pi,\\
+\mathcal U([a_i^{\min},a_i^{\max}]),&\text{otherwise}.
+\end{cases}
+\label{eq:pw_guided}
+\end{equation}
+
+Child selection follows a UCB rule from the current evaluator's
+perspective,
+\begin{equation}
+\begin{aligned}
+U(n,c;\rho_n)
+={}&Q_c^{(\rho_n)}
+ +C_{\mathrm{exp}}
+\sqrt{\frac{\max(1,N_n)^{\alpha_{\mathrm{exp}}}}{N_c}} .
+\end{aligned}
+\label{eq:ucb}
+\end{equation}
+with exploration hyperparameters $(C_{\mathrm{exp}},\alpha_{\mathrm{exp}})$.
+
+When a simulation reaches a leaf $s_L$ (depth limit or unexpanded node),
+its value is estimated either by random rollout or by the value network:
+with probability $\beta_v$ the leaf value is
+$\hat{\mathbf{v}}_L=V_\eta(\psi(s_L))$, where $\psi$ denotes the
+value-network input encoding (the full implementation state,
+Sec.~\ref{sec:observations});
+otherwise a rollout return is used. Estimates are discounted and backed up along the path, updating
+$\mathbf{W}_n$, $\mathbf{Q}_n$ and $N_n$ component-wise. After the budget
+is exhausted, the selected joint action is the root branch with highest
+mean value for the queried evaluator,
+\begin{equation}
+c^*=\arg\max_{c\in\mathcal{C}_0} Q_c^{(\rho_0)},
+\qquad
+\mathbf{a}^*=\mathbf{a}_{0\to c^*} .
+\label{eq:root_action}
+\end{equation}
+
+\subsection{Policy Distillation}
+
+Directly fitting the joint action would couple $2N_r$ output dimensions
+and scale poorly; we therefore maintain one policy network per agent.
+Expert labels are collected on reachable states rather than uniform
+samples: the current (or random) policy rolls out episodes, and the
+visited states $\mathcal{S}_\pi=\{s^{(1)},\dots,s^{(N_\pi)}\}$ are
+annotated by the expert. For state $s^{(j)}$ the expert joint action is
+split per agent, $a_i^{*(j)}=\mathbf{a}^{*(j)}[\mathcal{I}_i]$, and
+paired with the observation encoding
+$x_i^{(j)}=\phi_i(s^{(j)})$, giving
+\begin{equation}
+\mathcal{D}_{\pi}^{(i)}
+=
+\left\{
+\left(\phi_i(s^{(j)}),\mathbf a^{*(j)}[\mathcal I_i]\right)
+\right\}_{j=1}^{N_\pi}.
+\end{equation}
+
+To mitigate the non-stationarity of self-generated data, samples enter a
+replay buffer holding $T_{\mathrm r}$ rounds and are re-drawn with
+linearly increasing time weights
+\begin{equation}
+p_t=\frac{t}{\sum_{\tau=1}^{T_{\mathrm r}}\tau},
+\label{eq:replay}
+\end{equation}
+so recent expert knowledge is prioritized without discarding history.
+
+Each policy is a compact three-layer 64-unit MLP per agent whose output
+is squashed into the feasible action box by a scaled $\tanh$:
+\begin{equation}
+\hat{a}_i
+=
+\frac{a_i^{\max}+a_i^{\min}}{2}
++
+\frac{a_i^{\max}-a_i^{\min}}{2}
+\tanh\!\left(\mu_{\theta_i}(x_i)\right).
+\end{equation}
+Behavior cloning minimizes
+\begin{equation}
+\begin{aligned}
+\mathcal{L}_{\pi}^{(i)}(\theta_i)
+&=\frac{1}{N_\pi D_i}
+\sum_{j=1}^{N_\pi}\sum_{d=1}^{D_i}
+\left(\hat a_{i,d}^{(j)}-a_{i,d}^{*(j)}\right)^2 .
+\end{aligned}
+\label{eq:bc_loss}
+\end{equation}
+with AdamW \cite{loshchilov2019decoupled}, equivalently fitting the mean
+under fixed variance. During standalone-policy evaluation, the raw mean
+is perturbed by $0.1\epsilon$, $\epsilon\sim\mathcal N(0,I)$, before the
+scaled $\tanh$. The policy serves both as a reactive baseline ($B=0$)
+and as a candidate proposal in \eqref{eq:pw_guided}; MAPPO uses
+deterministic inference.
+
+\subsection{Value Network for Leaf Evaluation}
+
+Deep random rollouts dominate the cost of online search. We replace them
+with a value network $V_\eta$ trained on Monte Carlo return targets
+collected from reachable states,
+\begin{equation}
+\mathbf{v}^{*(j)}
+=\sum_{t=0}^{T_j-1}\gamma^t\,
+\mathbf r_{t}^{\mathrm{norm},(j)} ,
+\label{eq:value_target}
+\end{equation}
+by minimizing the element-wise error over all agents,
+\begin{equation}
+\begin{aligned}
+\mathcal L_V(\eta)
+&=\frac{1}{N_VN_r}
+\sum_{j=1}^{N_V}\sum_{i=1}^{N_r}
+\left(\hat v_i^{(j)}-v_i^{*(j)}\right)^2 .
+\end{aligned}
+\label{eq:value_loss}
+\end{equation}
+The return targets are Monte Carlo returns of the joint policy rolled out
+from reachable states; the expert supervises actions only.
+At deployment, leaves are evaluated by the network with probability
+$\beta_v$ and by rollout otherwise (Sec.~\ref{sec:expert}), retaining rollout
+evaluations alongside learned estimates.
+
+\subsection{Kinodynamic Execution Layer}
+
+Displacement commands cannot be executed instantaneously on hardware.
+The simulator includes a
+MINCO-based planner \cite{wang2022geometrically} that converts the high-level
+command $\mathbf{u}_{i,k}$ into a smooth quintic trajectory
+\begin{equation}
+\mathbf p_i(t)=\mathbf C^T\bm\beta^{(0)}(t),\qquad
+J=\int_0^{T_p}\|\mathbf p_i^{(3)}(t)\|_2^2\,dt .
+\end{equation}
+The coefficient state is propagated by
+\begin{equation}
+\mathbf C^+_{i,k}
+=\mathbf F_{\mathrm{cl}}\mathbf C_{i,k}
++\mathbf G_{\mathrm{cl}}(\mathbf p^{\mathrm{cmd}}_{i,k})^T
+\end{equation}
+at the control period $\Delta t_c=\Delta t/N_s$. Raw targets are clipped
+to the feasible region $[\underline{\mathbf{p}}_{i,k},
+\overline{\mathbf{p}}_{i,k}]$ implied by velocity/acceleration limits and
+the arena boundary before planning. Obstacle avoidance is left to the
+high-level policy through its LiDAR observations, keeping the planner
+closed-form; policy failures that cause collisions are penalized as
+out-of-bounds terminations. The resulting simulator transition
+    $s_{k+1}=F_{\mathrm{MINCO}}(s_k,\mathbf{u}_k)$ defines the execution
+interface. The experiments below use direct propagation; the MINCO map is
+included as the execution interface for later physical evaluation.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{EXPERIMENTS}
+
+\subsection{Protocol and Evaluation Questions}
+
+The evaluation asks two questions. First, how does search-guided policy
+execution compare with direct policy execution and unguided search at the
+tested operating points? Second, do the same comparisons hold for pursuit
+and evasion? We answer these questions with a complete cross-play matrix.
+Matched-budget and hardware measurements are treated separately from this
+comparison.
+
+The completed v5 benchmark instantiates the formulation with
+$n_E=n_P=2$ (2v2), giving a 13-D decision state, a 29-D augmented state,
+and an eight-dimensional joint action. Team size is an evaluation
+configuration rather than a defining restriction of the framework.
+The v5 protocol uses a $[-10,10]^2$ arena, an 80-step horizon,
+$\Delta t=1$, capture distance $d_c=1$, capture-reward weight $w_c=0.5$,
+and mutual elimination.
+Actions satisfy box bounds with evader speed parameter 1.5 and pursuer
+parameter 1.0. Initial positions are sampled in $[-9,9]$ in $x$, with
+evaders in $y\in[0,9]$ and pursuers in $y\in[-9,0]$, rejecting invalid
+or insufficiently separated configurations. The benchmark contains no
+obstacles and uses direct propagation, retaining the 29-D state with
+zero velocity and acceleration components.
+
+All methods face the same initial-state distribution. Ordinary matchups
+use seeds 1000--1004 with 200 episodes each; matchups involving the
+50,000-simulation reference use seed 1000 and 200 episodes. These are
+evaluation seeds, not independent training seeds. The five-by-five
+cross-play contains 17,800 episodes. We report double capture, mean
+number captured where relevant, unconditional episode duration,
+team-specific return, and invalid termination. An episode that avoids
+double capture may still lose one evader; duration is not individual
+robot survival. The saved summaries use $1.96s/\sqrt n$ intervals. An
+observed 100\% rate has zero sample variance but does not imply certainty.
+The evaluated distilled model is checkpoint iteration 79 from the
+\texttt{18\_lidar\_2obstacle} family; the baseline uses
+\texttt{mappo\_50k.pt}. Policy inputs are 264-D semantic LiDAR encodings,
+while search and value evaluation receive full simulator state. Thus the
+current experiment evaluates local policy inputs together with a
+full-state search root; it does not evaluate a fully partially observed
+search planner.
+
+\begin{table}[t]
+\centering\footnotesize
+\caption{Completed cross-play configuration. Execution-layer settings
+are separate from this direct-propagation benchmark.}
+\label{tab:params}
+\begin{tabularx}{\columnwidth}{@{}Yl@{}}\toprule
+Parameter & Value \\ \midrule
+Evader / pursuer team size & $n_E=n_P=2$ \\
+Arena / horizon & $[-10,10]^2$ / 80 steps \\
+Evader / pursuer speed parameter & 1.5 / 1.0 \\
+Capture radius / discount & 1.0 / 1.0 \\
+Search depth & 100 \\
+SO / S+L / LM simulations & 3000 / 1000 / 50000 \\
+$(C_{\mathrm{pw}},\alpha_{\mathrm{pw}})$ & $(2.0,0.5)$ \\
+$(C_{\mathrm{exp}},\alpha_{\mathrm{exp}})$ & $(1.0,0.25)$ \\
+$(\beta_\pi,\beta_v)$ for S+L & $(0.5,0.5)$ \\
+Policy / value input dimension & 264 / 29 \\
+Policy LiDAR / obstacles & 64 rays / 0 \\
+\bottomrule\end{tabularx}
+\end{table}
+
+\subsection{Compared Decision Makers}
+
+The completed benchmark compares five decision makers. Policy Only and
+the policy-guided expansion use local semantic-LiDAR policy encodings;
+the current C++ search root and value evaluator use simulator state.
+\begin{itemize}
+\item \textbf{Policy Only}: distilled policies without online search.
+\item \textbf{Search Only}: unguided team-alternating MCTS with uniform
+candidate sampling, random-rollout leaf evaluation, and $B=3000$.
+\item \textbf{Search + Learning}: the same search family with learned
+candidate proposals and leaf evaluation, $(\beta_\pi,\beta_v)=(0.5,0.5)$,
+and $B=1000$.
+\item \textbf{MAPPO}: a self-play-trained shared-actor comparator
+\cite{yu2021surprising}, using normalized full-state inputs. The current
+implementation lacks an agent identifier or ego-conditioned input:
+robots on the same team receive identical inputs to the same actor and
+therefore execute identical deterministic normalized actions. Its
+results describe this implementation, not a definitive MAPPO comparison.
+\item \textbf{Large-budget MCTS}: unguided search at $B=50000$,
+used as an empirical high-computation reference rather than an optimal
+solution or a theoretical performance bound.
+\end{itemize}
+
+\subsection{Cross-Play Reveals Role-Dependent Benefits}
+
+Table~\ref{tab:matrix} reports all pairings, rather than selecting a
+single favorable opponent. For more detailed analysis, we use the S+L
+evader, whose column distinguishes pursuit performance, and the
+50,000-simulation pursuer, which achieves the highest double-capture
+rate against that evader among the evaluated methods
+(Table~\ref{tab:twosided}). Reference selection is based on this candidate
+set; it is not a claim of universal opponent strength.
+
+\begin{table*}[t]
+\centering\footnotesize
+\caption{Complete v5 cross-play: double-capture rate (\%). Rows are
+pursuers and columns are evaders. PO: Policy Only; SO: Search Only;
+S+L: Search + Learning; LM: Large-budget MCTS. Ordinary matchups have
+1,000 episodes; any matchup involving LM has 200. $^*$Current MAPPO
+implementation; see limitations in the text.}
+\label{tab:matrix}
+\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}lrrrrr@{}}\toprule
+Pursuer $\backslash$ Evader & PO & SO & S+L & MAPPO$^*$ & LM \\ \midrule
+Policy Only ($B=0$) & 100.0 & 100.0 & 31.0 & 98.3 & 100.0 \\
+Search Only ($B=3000$) & 100.0 & 99.9 & 60.9 & 98.6 & 100.0 \\
+Search + Learning ($B=1000$) & 100.0 & 100.0 & 49.9 & 98.5 & 100.0 \\
+MAPPO$^*$ & 4.6 & 46.2 & 0.1 & 23.0 & 50.0 \\
+Large-budget MCTS ($B=50000$) & 100.0 & 100.0 & 76.0 & 98.0 & 100.0 \\
+\bottomrule\end{tabular*}
+\end{table*}
+
+\begin{table*}[t]
+\centering\footnotesize
+\caption{Two-sided reference evaluation, mean $\pm$ episode-level
+95\% normal-approximation CI from the saved v5 summaries. Duration is
+unconditional episode length. Invalid denotes termination by a
+collision or boundary violation on either side.}
+\label{tab:twosided}
+\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}lrrrr@{}}\toprule
+\multicolumn{5}{l}{\textbf{(a) Pursuit vs. S+L evader}}\\
+Method & Double cap. (\%) & Duration (steps) & Pursuer return & Invalid (\%) \\ \midrule
+Policy Only ($B=0$) & $31.0\pm2.9$ & $74.5\pm0.7$ & $0.428\pm0.027$ & 0.0 \\
+Search Only ($B=3000$) & $60.9\pm3.0$ & $65.0\pm1.0$ & $0.791\pm0.022$ & 0.0 \\
+Search + Learning ($B=1000$) & $49.9\pm3.1$ & $64.3\pm1.2$ & $0.751\pm0.026$ & 0.0 \\
+MAPPO$^*$ & $0.1\pm0.2$ & $79.9\pm0.1$ & $0.139\pm0.019$ & 0.1 \\
+Large-budget MCTS ($B=50000$) & $76.0\pm5.9$ & $56.6\pm2.8$ & $1.001\pm0.048$ & 0.0 \\
+\midrule
+\multicolumn{5}{l}{\textbf{(b) Evasion vs. 50,000-simulation pursuer}}\\
+Method & Double caught (\%) & Duration (steps) & Evader return & Invalid (\%) \\ \midrule
+Policy Only ($B=0$) & $100.0\pm0.0$ & $17.2\pm0.9$ & $0.421\pm0.018$ & 0.0 \\
+Search Only ($B=3000$) & $100.0\pm0.0$ & $13.6\pm0.7$ & $0.324\pm0.013$ & 0.0 \\
+Search + Learning ($B=1000$) & $76.0\pm5.9$ & $56.6\pm2.8$ & $1.197\pm0.055$ & 0.0 \\
+MAPPO$^*$ & $98.0\pm1.9$ & $16.1\pm0.9$ & $0.310\pm0.046$ & 2.0 \\
+Large-budget MCTS ($B=50000$) & $100.0\pm0.0$ & $11.4\pm0.6$ & $0.267\pm0.012$ & 0.0 \\
+\bottomrule\end{tabular*}
+\end{table*}
+
+\paragraph*{Cross-play results}
+The matrix shows a clear role dependence in the tested operating points.
+Against the S+L evader, pursuit improves as the search budget increases:
+the policy-only controller is weakest, the 1,000-simulation fused search
+is intermediate, and the larger unguided searches perform better. Against
+the high-budget pursuer, the fused evader lasts substantially longer than
+the policy-only and unguided-search evaders. These observations motivate
+separate pursuit and evasion analyses; they do not establish a universal
+ordering of the methods.
+
+The MAPPO row is included as an implementation baseline. Its shared actor
+does not receive an agent identifier, so same-team agents receive the same
+deterministic action for identical inputs. The corresponding results are
+useful for describing this implementation, but are not evidence about
+MAPPO in general. Invalid terminations are retained in the reported
+statistics.
+
+The tables report the v5 benchmark. Because the search implementation used
+for this run was subsequently corrected, the quantitative ordering should
+be regarded as provisional pending a rerun with the corrected implementation.
+
+% The following sections are retained as an experiment worklist.  They are
+% enabled only after the corrected benchmark and hardware measurements are
+% available.
+\iffalse
+\subsection{Matched-Budget and Component Studies}
+
+The completed comparison changes both search budget and guidance.
+The v5 result establishes a low-simulation operating point, but not a
+matched-time advantage. To isolate budget from guidance, the next evaluation fixes the checkpoint,
+opponent, initial conditions, search depth, and reward. SO and S+L will
+be evaluated at $B\in\{200,500,1000,3000,5000\}$ on both roles.
+The resulting curves will report capture performance and episode
+duration against simulation count and independently measured decision
+time. Earlier thesis-scale sweeps used different opponents and execution
+protocols; we exclude their numbers from the main comparison.
+Run the matched-budget sweep under the v5 protocol. Do not
+claim matched-time superiority or a speedup from simulation ratios alone.
+
+At $B=1000$, a factorial component study separates policy-based proposals
+from value-based evaluation (Table~\ref{tab:beta}). The opponent remains
+fixed at $(0.5,0.5)$, while the tested side uses $(0,0)$, $(0.5,0)$,
+$(0,0.5)$, or $(0.5,0.5)$. Pursuit and evasion are evaluated separately.
+The same study is repeated with two occluding obstacles and the execution
+layer enabled, with dynamics and model-training provenance specified
+for each scenario. A $(1,1)$ setting can additionally test dependence
+on rollout fallback.
+
+\begin{table}[t]\centering\footnotesize
+\caption{Planned component ablation at $B=1000$. Pending cells are not
+experimental results. Repeat on both the direct-propagation and
+obstacle/execution scenarios.}
+\label{tab:beta}
+\begin{tabular}{@{}ccccc@{}}\toprule
+$\beta_\pi$ & $\beta_v$ & Pursuit dbl. (\%) & Duration & Invalid (\%)\\
+\midrule
+0 & 0 & -- & -- & --\\
+0.5 & 0 & -- & -- & --\\
+0 & 0.5 & -- & -- & --\\
+0.5 & 0.5 & -- & -- & --\\
+\bottomrule\end{tabular}
+\end{table}
+Add the corresponding evasion table: double-caught rate,
+episode duration, evader return, and invalid rate.
+
+To examine the rollout-mismatch hypothesis, fixed candidate actions at
+representative states will be ranked by random-rollout estimates,
+learned values, and returns against the reference pursuer. Comparing
+ranking consistency and variance, together with random versus
+search-based rollout opponents, will test whether evaluation quality
+explains the role difference. The mechanism claim will be retained only
+if this controlled evidence supports it.
+
+\subsection{Observation and Execution Validation}
+
+The policy's semantic rays are subject to obstacle occlusion. The
+current search and value model still receive full simulator state, so
+local sensing is presently a policy interface rather than a complete
+partial-observation search solution. The correct next step is an
+estimated-state or belief-state root for both search and value evaluation.
+Accordingly, an obstacle test can study robustness of local action
+proposals without establishing a belief-space planner. Before claiming
+local-only fused deployment, the root-state estimator and the treatment
+of unobserved opponents must be specified and evaluated. A
+full-state-versus-estimated-state comparison should distinguish planning
+information from the policy observation interface.
+Report obstacle/execution simulation on the same initial-state
+sets for Policy Only, SO, and S+L. Include collisions, boundary exits,
+trajectory error, and capture outcomes; verify Python/C++ transition
+consistency. Earlier isolated obstacle numbers are not pooled with v5.
+
+The v5 run records each team's solver-call time separately, correcting
+joint-action timing. These measurements were collected concurrently
+across workers, however, and are not controlled onboard latency.
+A dedicated measurement will fix hardware, device, threads, warm-up,
+and a common state set. The benchmark records solver-call samples after
+a configurable warm-up and reports the exact pooled quantities
+$\bar\tau_r=\sum_{q\in\mathcal Q_r}\tau_q/|\mathcal Q_r|$ for each
+role $r\in\{\mathrm{evader},\mathrm{pursuer},\mathrm{joint}\}$,
+together with per-episode p50/p95 diagnostics. The pooled mean is the
+reported average single-step decision time; it excludes environment
+transition and reward computation, and the joint value includes both
+team solver calls executed sequentially. The mean of episode-level 95th
+percentiles is not the pooled per-call 95th percentile.
+Fill the dedicated latency table and include perception,
+communication, search, and trajectory generation in end-to-end timing.
+
+\ifshowhardware
+\subsection{Physical-Robot Interface (Results Reserved)}
+
+This subsection is an interface for the future physical experiment; it
+contains no hardware result. The experiment will test whether the
+simulation behavior survives sensing, communication, and execution
+errors. The intended comparison is Policy Only versus S+L on the same
+platforms, opponents, layouts, and initial configurations; a feasible
+small-budget SO setting may be added as a search-only reference. The
+high-level decision period must be distinguished from the low-level
+trajectory-control period. For any fused deployment, state acquisition
+and unavailable opponent states will be documented explicitly.
+
+Table~\ref{tab:hardware_interface} defines the contract between the
+decision module and the robot stack. Each field is deliberately left
+parameterized so that the eventual hardware measurements can be inserted
+without changing the algorithm description.
+
+\begin{table}[t]
+\centering\footnotesize
+\caption{Physical-experiment interface. Entries to be completed from the
+filled from the robot platform and trial log; no value is assumed here.}
+\label{tab:hardware_interface}
+\begin{tabular}{@{}p{0.25\linewidth}p{0.68\linewidth}@{}}
+\toprule
+Interface item & Definition / field to be specified \\
+\midrule
+Input to decision module & $o_{i,k}$: semantic LiDAR, robot state,
+timestamp; sensor and localization fields \\
+Opponent information & measured, communicated, or estimated
+state and delay \\
+Output & $\mathbf u_{i,k}$: bounded displacement target and validity flag \\
+Execution layer & MINCO target-to-trajectory map
+ $\mathbf u_{i,k}\mapsto\mathbf p_i(t)$ \\
+Timing & decision period, control period, compute device,
+mean/p50/p95, deadline misses \\
+Safety log & collision, boundary, tracking error, emergency stop \\
+Trial protocol & robot count, layouts, initial states, trials,
+success criteria \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[t]\centering
+\placeholderfig{2.4cm}{Pending hardware figure: arena and robot teams;
+perception/state-estimation interface; high-level decision and MINCO
+control timing; representative capture and escape trajectories.}
+\caption{Physical validation layout and execution interface to be
+completed after measurements.}
+\label{fig:hardware}
+\end{figure}
+
+The completed subsection will report team sizes, trial counts, captured
+fraction, full-team capture or avoidance of full-team capture,
+collision and boundary violations,
+trajectory-tracking error, and end-to-end latency with deadline misses.
+Open and obstacle layouts will be evaluated separately. Failure cases
+will identify whether the cause is state estimation, decision selection,
+or execution. If only Policy Only is deployed, the hardware claim will
+be limited to distilled-policy execution rather than validation of
+online fusion.
+Add robot platform, sensing/localization, onboard computer,
+control and decision periods, trial protocol, outcomes, and video. No
+physical result is claimed in this manuscript version.
+\fi
+
+\fi
+
+\subsection{Scope of the Current Evidence}
+
+The benchmark evaluates one 2v2 configuration and one distilled
+checkpoint family. The search root and value model use simulator state,
+whereas the policies use semantic LiDAR, so the experiment does not yet
+represent a fully partially observed fused planner. The MAPPO comparator
+also has a restricted actor input. These conditions delimit the scope of
+the cross-play evidence and motivate the matched-budget, component,
+state-estimation, and hardware evaluations retained in the source below.
+
+
+\section{CONCLUSION}
+
+We presented a search-guided controller for continuous-action
+multi-robot pursuit--evasion. Team-alternating MCTS provides supervision
+for decentralized policies, and the learned policies and value model guide
+subsequent low-budget search. In the cross-play benchmark, the
+controller occupies an intermediate operating point between direct policy
+execution and larger unguided searches, while pursuit and evasion exhibit
+different responses to search and learned guidance.
+
+The evidence is limited to the stated 2v2 simulation protocol and a
+full-state search root. Re-evaluation with the corrected implementation,
+matched budgets, component ablations, and physical execution will determine
+how well the observed trade-off transfers beyond this setting.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{thebibliography}{99}
+
+\bibitem{isaacs1965differential}
+R.~Isaacs, \emph{Differential Games: A Mathematical Theory with
+Applications to Warfare and Pursuit, Control and Optimization}. New York,
+NY, USA: Wiley, 1965.
+
+\bibitem{garcia2021multiple}
+E.~Garcia, D.~W. Casbeer, A.~von Moll, and M.~Pachter, ``Multiple
+pursuer multiple evader differential games,'' \emph{IEEE Trans. Autom.
+Control}, vol.~66, no.~5, pp.~2345--2350, 2021.
+
+\bibitem{chen2016multiplayer}
+J.~Chen, W.~Zha, Z.~H. Peng, et al., ``Multi-player pursuit--evasion
+games with one superior evader,'' \emph{Automatica}, vol.~71, pp.~24--32,
+2016.
+
+\bibitem{pierson2017intercepting}
+A.~Pierson, Z.~J. Wang, and M.~Schwager, ``Intercepting rogue robots: An
+algorithm for capturing multiple evaders with multiple pursuers,''
+\emph{IEEE Robot. Autom. Lett.}, vol.~2, no.~2, pp.~530--537, 2017.
+
+\bibitem{zhang2019tree}
+Z.~Zhang, Y.~Sung, L.~Zhou, et al., ``Tree search techniques for
+minimizing detectability and maximizing visibility,'' in \emph{Proc.
+IEEE Int. Conf. Robot. Autom. (ICRA)}, Montreal, QC, Canada, 2019.
+
+\bibitem{kocsis2006bandit}
+L.~Kocsis and C.~Szepesv\'ari, ``Bandit based Monte-Carlo planning,'' in
+\emph{Proc. Eur. Conf. Mach. Learn. (ECML)}, 2006, pp.~282--293.
+
+\bibitem{browne2012survey}
+C.~B. Browne et al., ``A survey of Monte Carlo tree search methods,''
+\emph{IEEE Trans. Comput. Intell. AI Games}, vol.~4, no.~1, pp.~1--43,
+2012.
+
+\bibitem{couetoux2011continuous}
+A.~Cou\"etoux, J.-B. Hoock, N.~Sokolovska, O.~Teytaud, and N.~Bonnard,
+``Continuous upper confidence trees,'' in \emph{Proc. LION}, 2011,
+pp.~433--445.
+
+\bibitem{chaslot2008progressive}
+G.~M. J.-B. Chaslot, M.~H. M. Winands, J.~W. H. M. Uiterwijk, H.~J. van
+den Herik, and B.~Bouzy, ``Progressive strategies for Monte-Carlo tree
+search,'' \emph{New Math. Nat. Comput.}, vol.~4, no.~3, pp.~343--357,
+2008.
+
+\bibitem{rosin2011multi}
+C.~D. Rosin, ``Multi-armed bandits with episode context,'' \emph{Ann.
+Math. Artif. Intell.}, vol.~61, no.~3, pp.~203--230, 2011.
+
+\bibitem{riviere2021neural}
+B.~Riviere, W.~H\"onig, M.~Anderson, and S.-J. Chung, ``Neural tree
+expansion for multi-robot planning in non-cooperative environments,''
+\emph{IEEE Robot. Autom. Lett.}, vol.~6, no.~4, pp.~6868--6875, 2021.
+
+\bibitem{huang2022more}
+B.~Huang, T.~Guo, A.~Boularias, and J.~Yu, ``Interleaving Monte Carlo
+tree search and self-supervised learning for object retrieval in clutter,''
+arXiv:2202.01426, 2022.
+
+\bibitem{silver2018general}
+D.~Silver et al., ``A general reinforcement learning algorithm that
+masters chess, shogi, and Go through self-play,'' \emph{Science},
+vol.~362, no.~6419, pp.~1140--1144, 2018.
+
+\bibitem{anthony2017thinking}
+T.~Anthony, Z.~Tian, and D.~Barber, ``Thinking fast and slow with deep
+learning and tree search,'' in \emph{Proc. Adv. Neural Inf. Process.
+Syst. (NeurIPS)}, 2017, pp.~5360--5370.
+
+\bibitem{yu2021surprising}
+C.~Yu et al., ``The surprising effectiveness of PPO in cooperative
+multi-agent games,'' in \emph{Proc. NeurIPS Datasets and Benchmarks},
+2021.
+
+\bibitem{wang2022geometrically}
+Z.~Wang, X.~Zhou, C.~Xu, and F.~Gao, ``Geometrically constrained
+trajectory optimization for multicopters,'' \emph{IEEE Trans. Robot.},
+vol.~38, no.~5, pp.~3259--3278, 2022.
+
+\bibitem{loshchilov2019decoupled}
+I.~Loshchilov and F.~Hutter, ``Decoupled weight decay regularization,''
+in \emph{Proc. Int. Conf. Learn. Represent. (ICLR)}, 2019.
+
+\bibitem{auer2002finite}
+P.~Auer, N.~Cesa-Bianchi, and P.~Fischer, ``Finite-time analysis of the
+multiarmed bandit problem,'' \emph{Mach. Learn.}, vol.~47, no.~2--3,
+pp.~235--256, 2002.
+
+\bibitem{ross2011reduction}
+S.~Ross, G.~J. Gordon, and J.~A. Bagnell, ``A reduction of imitation
+learning and structured prediction to no-regret online learning,'' in
+\emph{Proc. Int. Conf. Artif. Intell. Stat. (AISTATS)}, 2011,
+pp.~627--635.
+
+\bibitem{pomerleau1989alvinn}
+D.~A. Pomerleau, ``ALVINN: An autonomous land vehicle in a neural
+network,'' in \emph{Proc. Adv. Neural Inf. Process. Syst. (NeurIPS)},
+1989, pp.~305--313.
+
+\bibitem{lowe2017multi}
+R.~Lowe, Y.~Wu, A.~Tamar, J.~Harb, P.~Abbeel, and I.~Mordatch,
+``Multi-agent actor-critic for mixed cooperative-competitive
+environments,'' in \emph{Proc. Adv. Neural Inf. Process. Syst.
+(NeurIPS)}, 2017, pp.~6379--6390.
+
+\bibitem{schrittwieser2020mastering}
+J.~Schrittwieser, I.~Antonoglou, T.~Hubert, et al., ``Mastering Atari,
+Go, chess and shogi by planning with a learned model,'' \emph{Nature},
+vol.~588, no.~7839, pp.~604--609, 2020.
+
+\bibitem{baker2020emergent}
+B.~Baker, I.~Kanitscheider, T.~Markov, et al., ``Emergent tool use from
+multi-agent autocurricula,'' in \emph{Proc. Int. Conf. Learn. Represent.
+(ICLR)}, 2020.
+
+\bibitem{gonultas2025pursuit}
+B.~M. Gonultas and V.~Isler, ``Pursuit-evasion for car-like robots with
+sensor constraints,'' in \emph{Proc. IEEE/RSJ Int. Conf. Intell. Robots
+Syst. (IROS)}, 2025.
+
+\bibitem{wang2024viper}
+Y.~Wang, Y.~Cao, J.~Chiun, S.~Koley, M.~Pham, and G.~Sartoretti,
+``ViPER: Visibility-based pursuit-evasion via reinforcement learning,''
+in \emph{Proc. Conf. Robot Learn. (CoRL)}, ser. PMLR, vol.~270, 2024,
+pp.~4188--4200.
+
+\bibitem{chen2025online}
+J.~Chen, C.~Yu, G.~Li, et al., ``Online planning for multi-UAV
+pursuit-evasion in unknown environments using deep reinforcement
+learning,'' \emph{IEEE Robot. Autom. Lett.}, 2025.
+
+\end{thebibliography}
+
+\end{document}

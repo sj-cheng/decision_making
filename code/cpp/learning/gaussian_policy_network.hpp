@@ -24,14 +24,18 @@ class GaussianPolicyNetwork : public PolicyNetwork {
 
 			auto distribution = m_phi.eval(encoding);
 			auto mu = distribution.block(0,0,robot_action_dim,1);
+			auto logvar = distribution.block(robot_action_dim,0,robot_action_dim,1);
 			std::normal_distribution<float> noise_dist(0.0f,1.0f);
 
 			for (int i = 0; i < robot_action_dim; i++) {
 				int action_idx = problem->m_action_idxs[robot][i];
-				float sampled = mu(i,0) + 0.1f * noise_dist(gen);
 				float lower = problem->m_action_lims(action_idx,0);
 				float upper = problem->m_action_lims(action_idx,1);
-				action(i,0) = scale_action(lower, upper, sampled);
+				float mean = scale_action(lower, upper, mu(i,0));
+				float bounded_logvar = std::max(-8.0f, std::min(2.0f, logvar(i,0)));
+				float sd = std::sqrt(std::exp(bounded_logvar));
+				float sampled = mean + sd * noise_dist(gen);
+				action(i,0) = std::max(lower, std::min(upper, sampled));
 			}
 
 			return action; 

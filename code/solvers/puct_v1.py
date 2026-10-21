@@ -66,17 +66,19 @@ class PUCT_V1(Solver):
 
 
 	def is_expanded(self,curr_node):
-		max_children = np.ceil(self.C_pw * (curr_node.num_visits ** self.alpha_pw))
-		return len(curr_node.children) > max_children 
+		max_children = max(1, np.ceil(self.C_pw * (curr_node.num_visits ** self.alpha_pw)))
+		return len(curr_node.children) >= max_children
 
 
-	def best_child(self,curr_node,robot):
+	def best_child(self,curr_node,problem,robot):
 		best_c = None
 		best_value = -np.inf 
 		for child in curr_node.children: 
 			if child.num_visits == 0: 
 				return child
-			value = child.total_value[robot] / child.num_visits + \
+			edge_reward = problem.normalized_reward(
+				curr_node.state, curr_node.edges[child])[robot, 0]
+			value = edge_reward + problem.gamma * child.total_value[robot, 0] / child.num_visits + \
 				self.C_exp * np.sqrt((curr_node.num_visits ** self.alpha_exp)/child.num_visits)
 			if value > best_value: 
 				best_value = value 
@@ -85,6 +87,8 @@ class PUCT_V1(Solver):
 
 
 	def default_policy(self,node,problem):
+		if problem.is_terminal(node.state):
+			return np.zeros((problem.num_robots,1))
 		if self.value_oracle is not None and np.random.uniform() < self.beta_value:
 			value = self.value_oracle.eval(problem,node.state) 
 		else: 
@@ -101,10 +105,10 @@ class PUCT_V1(Solver):
 		return value 
 
 
-	def calc_value(self,rewards,start_depth,total_depth,gamma,num_robots):
+	def calc_value(self,rewards,path_depth,total_depth,gamma,num_robots):
 		value = np.zeros((num_robots,1)) 
-		for d in range(start_depth,total_depth):
-			value += rewards[d] * gamma ** d
+		for depth in range(path_depth,total_depth):
+			value += rewards[depth] * gamma ** (depth - path_depth)
 		return value 
 
 
@@ -119,7 +123,7 @@ class PUCT_V1(Solver):
 			return root_node
 
 		if not all(x is None for x in self.policy_oracle):
-			self.policy_solver = PolicySolver(self.policy_oracle)
+			self.policy_solver = PolicySolver(self.policy_oracle, stochastic=True)
 
 		# search 
 		for t in range(self.number_simulations):
@@ -131,16 +135,18 @@ class PUCT_V1(Solver):
 			# collect data
 			for d in range(self.search_depth):
 				robot = (d+turn) % problem.num_robots  
+				expanded_leaf = False
 				if self.is_expanded(curr_node):
-					child_node = self.best_child(curr_node,robot) 
+					child_node = self.best_child(curr_node,problem,robot)
 				else:
 					child_node = self.expand_node(curr_node,problem)
+					expanded_leaf = True
 
 				path.append(curr_node)
 				rewards.append(problem.normalized_reward(curr_node.state,curr_node.edges[child_node]))
 				curr_node = child_node 
 
-				if problem.is_terminal(child_node.state):
+				if expanded_leaf or problem.is_terminal(child_node.state):
 					break 
 
 			rewards.append(self.default_policy(child_node,problem))
