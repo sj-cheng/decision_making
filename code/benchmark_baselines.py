@@ -17,6 +17,8 @@ all measured solver calls after the configured warm-up steps.
 
 Use ``--round-robin`` for the full method-by-method matrix.  MAPPO is included
 when ``--mappo-checkpoint`` points to a trained checkpoint.
+Use ``--obstacle-layout two`` or ``four`` for fixed obstacle maps; ``none``
+retains the original no-obstacle protocol. See ``run_benchmark_obstacles.sh``.
 """
 
 import argparse
@@ -46,9 +48,22 @@ from solvers.baselines import (
     RoleMaskedSolver,
     TeamSolver,
 )
+from util import contains
 
 
 METHODS = ("Random", "Greedy", "Policy Only", "Search Only", "Search + Learning", "MAPPO", "Large-budget MCTS")
+
+# Fixed maps, independent of future changes to Example8's training defaults.
+# Each rectangle is [[xmin, xmax], [ymin, ymax]].
+OBSTACLE_LAYOUTS = {
+    "none": (),
+    "two": (((-4.0, -2.0), (-3.5, -1.5)),
+            ((2.0, 4.0), (1.5, 3.5))),
+    "four": (((-4.0, -2.0), (-3.5, -1.5)),
+             ((2.0, 4.0), (1.5, 3.5)),
+             ((-4.0, -2.0), (1.5, 3.5)),
+             ((2.0, 4.0), (-3.5, -1.5))),
+}
 
 _PROGRESS_QUEUE = None
 _PROGRESS_STEP_INTERVAL = 5
@@ -60,15 +75,35 @@ def init_worker_progress(progress_queue, step_interval):
     _PROGRESS_STEP_INTERVAL = max(1, int(step_interval))
 
 
-def configure_problem():
+def configure_problem(obstacle_layout="none"):
     problem = get_problem("example8")
-    # Keep the benchmark's existing Example8 protocol: no simulated
-    # obstacles and direct propagation, while retaining the current
-    # Example8 speed limits and team-separated spawn configuration.
-    problem.obstacles = []
+    # Retain the benchmark dynamics and spawn rules, changing only the map.
+    # The parent and every spawned worker must use the same explicit layout.
+    problem.obstacles = [np.array(rectangle, dtype=float)
+                         for rectangle in OBSTACLE_LAYOUTS[obstacle_layout]]
     problem.evader_spawn_near_obstacles = False
     problem.use_minco_dynamics = False
     return problem
+
+
+def problem_metadata(problem, obstacle_layout):
+    protocol = ("example8_global_no_obstacle_direct_v1" if obstacle_layout == "none"
+                else "example8_global_{}_obstacles_direct_v1".format(obstacle_layout))
+    return {
+        "benchmark_protocol": protocol,
+        "obstacle_layout": obstacle_layout,
+        "obstacles": [obstacle.tolist() for obstacle in problem.obstacles],
+        "use_minco_dynamics": problem.use_minco_dynamics,
+        "evader_spawn_near_obstacles": problem.evader_spawn_near_obstacles,
+        "split_spawn_by_team": problem.split_spawn_by_team,
+        "observation_contract": {
+            "search": "full simulator state and fixed obstacle map",
+            "policy": "semantic lidar with obstacle occlusion and last-seen memory",
+            "value": "physical state encoding",
+            "mappo": "checkpoint observation schema and action decoder",
+        },
+        "collision_rule": "endpoint inside rectangle (inclusive), following Example8",
+    }
 
 
 def oracle_paths(root, iteration=79, model_dir=None):
@@ -231,6 +266,9 @@ def run_episode(problem, solver, initial_state, progress_info=None, timing_warmu
     evader_latencies = []
     pursuer_latencies = []
     invalid = False
+    violations = {role + "_" + kind: 0
+                  for role in ("evader", "pursuer")
+                  for kind in ("obstacle_collision", "out_of_bounds")}
     first_capture_time = np.nan
     final_capture_time = np.nan
     capture_count = 0
@@ -261,6 +299,13 @@ def run_episode(problem, solver, initial_state, progress_info=None, timing_warmu
             final_capture_time = float(next_state[problem.time_idx, 0])
         if not problem.is_valid(next_state):
             invalid = True
+            for role, robots in (("evader", problem.evaders), ("pursuer", problem.pursuers)):
+                for robot in robots:
+                    if problem.check_obstacle_collision(next_state, robot):
+                        violations[role + "_obstacle_collision"] = 1
+                    idx = problem.state_idxs[robot]
+                    if not contains(next_state[idx, :], problem.state_lims[idx, :]):
+                        violations[role + "_out_of_bounds"] = 1
         state = next_state
         if progress_info is not None and _PROGRESS_QUEUE is not None:
             stem, seed, episode, max_steps = progress_info
@@ -314,6 +359,11 @@ def run_episode(problem, solver, initial_state, progress_info=None, timing_warmu
         "evader_return": float(np.sum(total_reward[problem.evaders])),
         "collision_or_out_of_bounds": int(invalid),
         "illegal_terminal": int(invalid),
+        "obstacle_collision": max(violations["evader_obstacle_collision"],
+                                  violations["pursuer_obstacle_collision"]),
+        "out_of_bounds": max(violations["evader_out_of_bounds"],
+                             violations["pursuer_out_of_bounds"]),
+        **violations,
         # Legacy fields are explicitly the whole joint action call.  The
         # side-specific fields below are the values to use for per-method
         # latency tables (pursuer_* for a pursuer row, evader_* for an evader
@@ -433,9 +483,14 @@ def summarize(records):
         "pursuer_mean_latency_ms", "pursuer_p50_latency_ms",
         "pursuer_p95_latency_ms", "pursuer_max_latency_ms", "wall_time_s",
     ]
+    # Older saved chunks do not contain the detailed collision diagnostics.
+    numeric.extend(key for key in (
+        "obstacle_collision", "out_of_bounds", "evader_obstacle_collision",
+        "pursuer_obstacle_collision", "evader_out_of_bounds", "pursuer_out_of_bounds",
+    ) if any(key in record for record in records))
     summary = OrderedDict()
     for key in numeric:
-        values = np.asarray([r[key] for r in records], dtype=float)
+        values = np.asarray([r.get(key, np.nan) for r in records], dtype=float)
         values = values[np.isfinite(values)]
         if len(values) == 0:
             summary[key] = {"mean": np.nan, "std": np.nan, "ci95": np.nan, "n": 0}
@@ -462,8 +517,11 @@ def summarize(records):
 def write_records(path, records):
     if not records:
         return
+    # A resumed legacy no-obstacle run may mix old chunks with the new,
+    # optional collision columns. Preserve both schemas when merging.
+    fieldnames = list(dict.fromkeys(key for record in records for key in record))
     with open(path, "w", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(records[0].keys()))
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(records)
 
@@ -567,11 +625,19 @@ RESUME_KEYS = (
     "large_budget", "beta_policy", "beta_value", "methods", "round_robin",
     "chunk_episodes", "model_iteration", "mappo_checkpoint", "pursuer_method",
     "evader_method", "pursuer_budget", "evader_budget", "limit",
+    "benchmark_protocol", "obstacle_layout", "obstacles", "model_dir",
+    "mappo_legacy", "timing_warmup_steps",
 )
 
 
 def resume_signature(metadata):
-    return {key: metadata.get(key) for key in RESUME_KEYS}
+    signature = {key: metadata.get(key) for key in RESUME_KEYS}
+    # Old no-obstacle runs predate explicit scene metadata.
+    if signature["obstacle_layout"] is None:
+        signature["obstacle_layout"] = "none"
+    if signature["obstacles"] is None and signature["obstacle_layout"] == "none":
+        signature["obstacles"] = []
+    return signature
 
 
 def check_resume_signature(output, metadata):
@@ -595,8 +661,8 @@ def check_resume_signature(output, metadata):
 def run_matchup_task(task):
     """Spawn-safe worker for one independent matchup."""
     pursuer_name, evader_name, initial_states, seeds, episode_offsets, config = task
-    problem = configure_problem()
     args = argparse.Namespace(**config)
+    problem = configure_problem(getattr(args, "obstacle_layout", "none"))
     torch.set_num_threads(args.cpu_threads)
     # Network constructors print one line per checkpoint.  With dozens of
     # workers those messages make the parent progress display unreadable.
@@ -621,6 +687,8 @@ def main():
     parser.add_argument("--large-budget", type=int, default=50000)
     parser.add_argument("--beta-policy", type=float, default=0.5)
     parser.add_argument("--beta-value", type=float, default=0.5)
+    parser.add_argument("--obstacle-layout", choices=list(OBSTACLE_LAYOUTS), default="none",
+                        help="fixed obstacle map; none preserves the original benchmark")
     parser.add_argument("--output", default="../current/benchmarks")
     parser.add_argument("--root", default=None, help="repository root; defaults to the parent of code/")
     parser.add_argument("--mappo-checkpoint", default=None)
@@ -664,11 +732,18 @@ def main():
     args = parser.parse_args()
     if args.workers < 1 or args.cpu_threads < 1 or args.chunk_episodes < 0:
         parser.error("workers/cpu-threads must be positive; chunk-episodes must be nonnegative")
+    if args.seeds < 1 or args.large_seeds < 1 or args.episodes < 1:
+        parser.error("seeds/large-seeds/episodes must be positive")
+    unknown_methods = set(args.methods) - set(METHODS)
+    if unknown_methods:
+        parser.error("unknown methods: {}".format(", ".join(sorted(unknown_methods))))
     torch.set_num_threads(args.cpu_threads)
     args.root = args.root or os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     args.mappo_checkpoint = resolve_mappo_checkpoint(args.root, args.mappo_checkpoint)
     os.makedirs(args.output, exist_ok=True)
-    problem = configure_problem()
+    problem = configure_problem(args.obstacle_layout)
+    scene = problem_metadata(problem, args.obstacle_layout)
+    print("protocol={} obstacles={}".format(scene["benchmark_protocol"], len(problem.obstacles)), flush=True)
     seeds = list(range(1000, 1000 + args.seeds))
     large_seeds = list(range(1000, 1000 + args.large_seeds))
     initial_states = generate_initial_states(problem, seeds, args.episodes)
@@ -705,7 +780,7 @@ def main():
         "model_dir": args.model_dir,
         "model_iteration": args.model_iteration,
         "limit": args.limit,
-        "benchmark_protocol": "example8_global_no_obstacle_direct_v1",
+        **scene,
         "latency_mode": "team_solver_calls_v2",
         "role_mask_mode": "team_aware_root_policy",
         "pursuer_budget": args.pursuer_budget,
@@ -714,6 +789,7 @@ def main():
         "cpu_threads": args.cpu_threads,
     }
     metadata = vars(args).copy()
+    metadata.update(scene)
     metadata.update({
         "root": args.root,
         "regular_seeds": seeds,
@@ -761,7 +837,7 @@ def main():
             pending.append((pursuer_name, evader_name, matchup_states, matchup_seeds,
                             [0] * len(matchup_states), config))
 
-    if args.parallel and (len(pending) + skipped_chunks) > 1:
+    if args.parallel and (args.chunk_episodes > 0 or (len(pending) + skipped_chunks) > 1):
         if not pending:
             written = merge_chunks(args.output)
             print("all {} chunks already complete; wrote {} matchup files".format(

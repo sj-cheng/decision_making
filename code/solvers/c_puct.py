@@ -93,7 +93,9 @@ class C_PUCT(Solver):
 		# wrapper when they change instead of reusing stale action bounds.
 		action_lims_signature = np.ascontiguousarray(problem.action_lims, dtype=np.float64).tobytes()
 		init_lims_signature = np.ascontiguousarray(problem.init_lims, dtype=np.float64).tobytes()
-		cpp_signature = (id(problem), action_lims_signature, init_lims_signature, float(problem.dt))
+		map_signature = np.asarray(getattr(problem, 'obstacles', []), dtype=np.float64).tobytes()
+		cpp_signature = (id(problem), action_lims_signature, init_lims_signature, float(problem.dt),
+			map_signature, bool(getattr(problem, 'swept_collision', False)))
 		cached = getattr(self, "_cpp_problem", None)
 		if cached is not None and getattr(self, "_cpp_problem_signature", None) == cpp_signature:
 			return cached
@@ -109,6 +111,10 @@ class C_PUCT(Solver):
 		problem_settings.r_min = problem.r_min
 		problem_settings.state_lims = problem.state_lims
 		problem_settings.action_lims = problem.action_lims 
+		if hasattr(problem_settings, 'swept_collision'):
+			problem_settings.swept_collision = bool(getattr(problem, 'swept_collision', False))
+		elif getattr(problem, 'swept_collision', False):
+			raise RuntimeError('Rebuild C++ bindings to enable the local-observation collision protocol')
 		problem_settings.state_idxs = problem.state_idxs
 		problem_settings.action_idxs = problem.action_idxs
 		problem_settings.init_lims = problem.init_lims 

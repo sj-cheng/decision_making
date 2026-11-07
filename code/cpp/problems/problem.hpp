@@ -18,6 +18,7 @@ class Problem_Settings
         float mass; 
         float g; 
         float desired_distance;
+        bool swept_collision = false;
         float evader_distance_reward_weight = 0.0f;
         // Legacy global potential shaping. The current Example8 protocol
         // leaves this at zero and uses per-robot progress terms below.

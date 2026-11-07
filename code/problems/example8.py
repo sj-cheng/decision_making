@@ -411,6 +411,8 @@ class Example8(Problem):
 		self.t0 = 0
 		self.tf = 80
 		self.dt = 1
+		# Opt-in protocol; historical experiments retain endpoint collision.
+		self.swept_collision = False
 		self.gamma = 1.0
 		self.num_robots = 4
 
@@ -678,6 +680,12 @@ class Example8(Problem):
 		return features
 
 	def ray_point_distance(self, origin, direction, point):
+		if self.swept_collision:
+			rel = np.asarray(point, dtype=np.float32).astype(float) - np.asarray(origin, dtype=np.float32).astype(float)
+			distance = float(np.linalg.norm(rel))
+			target = int(np.rint(np.arctan2(rel[1], rel[0]) * self.lidar_num_beams / (2*np.pi))) % self.lidar_num_beams
+			beam = int(np.rint(np.arctan2(direction[1], direction[0]) * self.lidar_num_beams / (2*np.pi))) % self.lidar_num_beams
+			return distance if distance > 1e-8 and target == beam else np.inf
 		rel = np.asarray(point, dtype=float).reshape((2,)) - origin
 		distance = float(np.linalg.norm(rel))
 		if distance <= 1e-8:
@@ -786,6 +794,10 @@ class Example8(Problem):
 				& (angles <= self.lidar_half_beam_width + 1e-8)
 				& (distance < nearest_obstacle_distances - occlusion_eps)
 			)
+			if self.swept_collision:
+				rel32 = state[self.state_idxs[other_robot],0].astype(np.float32).astype(float) - origin.astype(np.float32).astype(float)
+				beam = int(np.rint(np.arctan2(rel32[1],rel32[0])*self.lidar_num_beams/(2*np.pi))) % self.lidar_num_beams
+				mask = (np.arange(self.lidar_num_beams)==beam) & (distance < nearest_obstacle_distances-occlusion_eps)
 			if not np.any(mask):
 				continue
 			channel = 0 if self.same_team(robot, other_robot) else 1
@@ -852,6 +864,10 @@ class Example8(Problem):
 				& (angles <= self.lidar_half_beam_width + 1e-8)
 				& (distance < nearest_obstacle - 1e-8)
 			)
+			if self.swept_collision:
+				rel32 = state[self.state_idxs[other_robot],0].astype(np.float32).astype(float) - origin.astype(np.float32).astype(float)
+				beam = int(np.rint(np.arctan2(rel32[1],rel32[0])*self.lidar_num_beams/(2*np.pi))) % self.lidar_num_beams
+				visible_beam = (np.arange(self.lidar_num_beams)==beam) & (distance < nearest_obstacle-1e-8)
 			if not np.any(visible_beam):
 				continue
 			if best is None or distance < best[0]:
@@ -987,7 +1003,14 @@ class Example8(Problem):
 	def propagate_robot_state(self, state, velocity, dt, robot):
 		Fd = np.eye(len(self.state_idxs[robot])) + dt * self.Fc
 		Bd = dt * self.Bc
-		return np.dot(Fd, state[self.state_idxs[robot], :]) + np.dot(Bd, velocity)
+		start = state[self.state_idxs[robot], :]
+		end = np.dot(Fd, start) + np.dot(Bd, velocity)
+		if self.swept_collision:
+			# Stop inside the first intersected box so existing terminal/reward
+			# APIs also detect a crossing whose original endpoint was outside.
+			from local_observation import first_collision_point
+			end = first_collision_point(start.reshape(2), end.reshape(2), self.obstacles).reshape(2, 1)
+		return end
 
 	# 辅助：获取MINCO轨迹规划的时间 horizon（避免过小）
 	def get_minco_horizon(self, dt):
@@ -1296,8 +1319,12 @@ class Example8(Problem):
 		for p in self.pursuers:
 			if not self.is_active(state, p):
 				continue
+			if self.swept_collision and (not contains(state[self.state_idxs[p], :], self.state_lims[self.state_idxs[p], :]) or self.check_obstacle_collision(state, p)):
+				continue
 			for e in self.evaders:
 				if not self.is_active(state, e):
+					continue
+				if self.swept_collision and (not contains(state[self.state_idxs[e], :], self.state_lims[self.state_idxs[e], :]) or self.check_obstacle_collision(state, e)):
 					continue
 				d = np.linalg.norm(state[self.state_idxs[p], :] - state[self.state_idxs[e], :])
 				if d < self.desired_distance:

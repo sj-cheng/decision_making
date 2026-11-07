@@ -38,6 +38,7 @@ class Example8 : public Problem {
 		std::vector<int> m_pursuers = {2, 3};
 		std::vector<Eigen::Matrix<float,2,2>> m_obstacles;
 		bool m_rollout_mode = false;
+		bool m_swept_collision = false;
 		std::vector<std::vector<int>> m_memory_idxs = {
 			{29, 30, 31, 32, 33, 34},
 			{35, 36, 37, 38, 39, 40},
@@ -127,6 +128,18 @@ class Example8 : public Problem {
 			const Vec2f &direction,
 			const Vec2f &point) const
 		{
+			if (m_swept_collision) {
+				// The local protocol partitions the circle into disjoint bins.
+				// Comparing float sin/cos angles independently leaves tiny gaps
+				// at beam boundaries (and can duplicate one target in two bins).
+				const Eigen::Vector2d relative = point.cast<double>() - origin.cast<double>();
+				const double distance = relative.norm();
+				if (distance <= 1e-8) return std::numeric_limits<float>::infinity();
+				const double scale = kLidarNumBeams / (2.0 * 3.14159265358979323846);
+				const int target = (int(std::nearbyint(std::atan2(relative(1), relative(0))*scale))%kLidarNumBeams+kLidarNumBeams)%kLidarNumBeams;
+				const int beam = (int(std::nearbyint(std::atan2(double(direction(1)), double(direction(0)))*scale))%kLidarNumBeams+kLidarNumBeams)%kLidarNumBeams;
+				return target == beam ? float(distance) : std::numeric_limits<float>::infinity();
+			}
 			const Vec2f rel = point - origin;
 			const float distance = rel.norm();
 			if (distance <= 1e-8f) {
@@ -286,6 +299,11 @@ class Example8 : public Problem {
 				bool visible = false;
 				for (int beam_idx = 0; beam_idx < kLidarNumBeams; ++beam_idx) {
 					const Vec2f &direction = m_lidar_directions[beam_idx];
+					if (m_swept_collision) {
+						const Vec2f point = state.block(m_state_idxs[other_robot][0], 0, 2, 1);
+						if (std::isfinite(ray_point_distance(origin, direction, point)) && distance < nearest_obstacle[beam_idx] - 1e-8f) {visible = true; break;}
+						continue;
+					}
 					const float projection = direction.dot(relative);
 					if (projection <= 0.0f) continue;
 					const float cross = direction(0) * relative(1) - direction(1) * relative(0);
@@ -343,7 +361,7 @@ class Example8 : public Problem {
 		Eigen::Matrix<float,-1,1> policy_memory_features(
 			const Eigen::Matrix<float,-1,1> &state, int robot) const
 		{
-			Eigen::Matrix<float,-1,1> features(kPolicyMemoryFeatureDim, 1);
+			Eigen::Matrix<float,-1,1> features(static_cast<int>(kPolicyMemoryFeatureDim), 1);
 			const auto &idx = m_memory_idxs[robot];
 			features(0, 0) = state(idx[0], 0) / 20.0f;
 			features(1, 0) = state(idx[1], 0) / 20.0f;
@@ -531,6 +549,7 @@ class Example8 : public Problem {
 			m_evader_progress_reward_weight = problem_settings.evader_progress_reward_weight;
 			m_pursuer_progress_reward_weight = problem_settings.pursuer_progress_reward_weight;
 			m_obstacles = problem_settings.obstacles;
+			m_swept_collision = problem_settings.swept_collision;
 			m_lidar_directions.resize(kLidarNumBeams);
 			for (int beam_idx = 0; beam_idx < kLidarNumBeams; ++beam_idx) {
 				const float theta = 2.0f * lidar_pi() * static_cast<float>(beam_idx) /
@@ -695,8 +714,10 @@ class Example8 : public Problem {
 			std::vector<Candidate> cand;
 			for (int p : m_pursuers) {
 				if (!is_active(state, p)) continue;
+				if (m_swept_collision && !is_robot_state_valid(state,p)) continue;
 				for (int e : m_evaders) {
 					if (!is_active(state, e)) continue;
+					if (m_swept_collision && !is_robot_state_valid(state,e)) continue;
 					float d = (state.block(m_state_idxs[p][0],0,m_state_idxs[p].size(),1) -
 							state.block(m_state_idxs[e][0],0,m_state_idxs[e].size(),1)).norm();
 					if (d < m_dist) {
@@ -757,6 +778,34 @@ class Example8 : public Problem {
 					Bd * control;
 				next_state.block(m_vel_idxs[ii][0],0,m_vel_idxs[ii].size(),1).setZero();
 				next_state.block(m_acc_idxs[ii][0],0,m_acc_idxs[ii].size(),1).setZero();
+			}
+			if (m_swept_collision) {
+				for (int ii = 0; ii < m_num_robots; ++ii) {
+					if (!is_active(state, ii)) continue;
+					Vec2f start = state.block(m_state_idxs[ii][0],0,2,1);
+					Vec2f delta = next_state.block(m_state_idxs[ii][0],0,2,1) - start;
+					float first = 2.f;
+					for (const auto &box : m_obstacles) {
+						float lo = 0.f, hi = 1.f;
+						bool hit = true;
+						for (int axis = 0; axis < 2; ++axis) {
+							if (std::abs(delta(axis)) < 1e-12f) {
+								if (start(axis) < box(axis,0) || start(axis) > box(axis,1)) hit = false;
+							} else {
+								float a = (box(axis,0)-start(axis))/delta(axis);
+								float b = (box(axis,1)-start(axis))/delta(axis);
+								lo = std::max(lo, std::min(a,b));
+								hi = std::min(hi, std::max(a,b));
+							}
+						}
+						if (hit && lo <= hi && lo < first) {
+							first = lo;
+							Vec2f point = start + delta * std::min(hi, lo + 1e-5f);
+							for (int axis=0; axis<2; ++axis) point(axis) = std::max(box(axis,0), std::min(box(axis,1), point(axis)));
+							next_state.block(m_state_idxs[ii][0],0,2,1) = point;
+						}
+					}
+				}
 			}
 
             next_state(m_time_idx,0) = state(m_time_idx,0) + timestep;
