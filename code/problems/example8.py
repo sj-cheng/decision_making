@@ -556,13 +556,26 @@ class Example8(Problem):
 		self.state_lims = np.vstack((self.state_lims, memory_lims))
 		self.approx_dist = (self.state_lims[0,1] - self.state_lims[0,0]) / 10
 
+		# Dense axis-aligned stand-in for the illustrated multi-obstacle map.
+		# Each entry is [[xmin, xmax], [ymin, ymax]].
 		self.obstacles = [
-			np.array([[-4.0, -2.0], [-3.5,-1.5]], dtype=float),  # 左下
-			np.array([[2.0, 4.0], [1.5, 3.5]], dtype=float),    # 右上
-			np.array([[-4.0, -2.0], [1.5, 3.5]], dtype=float),  # 左上
-			np.array([[2.0, 4.0], [-3.5, -1.5]], dtype=float),  # 右下
-			# np.array([[-4.0,-2.0], [-1.5,1.5]], dtype=float),  # 中间偏左
-			# np.array([[2.0,4.0], [-1.5,1.5]], dtype=float),    # 中间偏右
+			np.array([[-8.3, -6.9], [3.7, 5.3]], dtype=float),
+			np.array([[-4.25, -2.75], [6.75, 8.45]], dtype=float),
+			np.array([[-1.25, 0.25], [5.6, 7.2]], dtype=float),
+			np.array([[1.45, 2.95], [4.5, 5.9]], dtype=float),
+			np.array([[5.4, 7.0], [3.3, 5.1]], dtype=float),
+			np.array([[-3.2, -1.8], [1.85, 3.35]], dtype=float),
+			np.array([[-7.75, -6.25], [-0.6, 1.0]], dtype=float),
+			np.array([[0.7, 2.3], [0.35, 1.85]], dtype=float),
+			np.array([[3.7, 5.3], [-0.5, 0.9]], dtype=float),
+			np.array([[7.0, 8.6], [0.75, 2.25]], dtype=float),
+			np.array([[-3.95, -2.25], [-2.4, -0.8]], dtype=float),
+			np.array([[1.25, 2.75], [-2.75, -1.05]], dtype=float),
+			np.array([[-1.85, -0.15], [-5.35, -3.85]], dtype=float),
+			np.array([[-4.1, -2.5], [-7.2, -5.8]], dtype=float),
+			np.array([[1.5, 3.1], [-7.5, -5.9]], dtype=float),
+			np.array([[5.6, 7.2], [-4.35, -2.85]], dtype=float),
+			np.array([[6.65, 8.15], [-6.9, -5.3]], dtype=float),
 		]
 
 		self.current_evader_speed_lim = 0.8

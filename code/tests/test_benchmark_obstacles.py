@@ -42,6 +42,24 @@ class ObstacleBenchmarkTest(unittest.TestCase):
         action[problem.action_idxs[robot][0], 0] = 0.75
         return problem, state, action
 
+    def test_fixed_speeds_stay_on_the_axis_limits(self):
+        problem = configure_problem("four", evader_speed=1.5, pursuer_speed=1.0)
+        self.assertEqual(len(problem.obstacles), 4)
+        self.assertFalse(problem.use_minco_dynamics)
+        state = problem.initialize()
+        self.assertEqual(problem.current_evader_speed_lim, 1.5)
+        self.assertEqual(problem.current_pursuer_speed_lim, 1.0)
+        action = np.zeros((problem.action_dim, 1))
+        action[0, 0] = 5.0
+        action[4, 0] = 5.0
+        nxt = problem.step(state, action, problem.dt)
+        self.assertAlmostEqual(float(nxt[0, 0] - state[0, 0]), 1.5)
+        self.assertAlmostEqual(float(nxt[4, 0] - state[4, 0]), 1.0)
+        meta = problem_metadata(problem, "four")
+        self.assertEqual(meta["evader_speed"], 1.5)
+        self.assertEqual(meta["pursuer_speed"], 1.0)
+        self.assertIn("evader1.5_pursuer1", meta["benchmark_protocol"])
+
     def test_paired_initial_states_are_legal_and_repeatable(self):
         for layout in ("none", "two", "four"):
             problem = configure_problem(layout)

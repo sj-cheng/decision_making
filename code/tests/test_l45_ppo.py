@@ -138,7 +138,7 @@ class L45PPOTests(unittest.TestCase):
         np.testing.assert_array_equal(restored.step(state, action, restored.dt), original.step(expected, action, original.dt))
         self.assertFalse(restored.swept_collision)
         self.assertFalse(restored.use_minco_dynamics)
-        self.assertEqual(len(restored.obstacles), 4)
+		self.assertEqual(len(restored.obstacles), 17)
         tampered = copy.deepcopy(spec)
         tampered['pursuer_speed'] += .1
         with self.assertRaisesRegex(ValueError, 'Scenario fingerprint'):

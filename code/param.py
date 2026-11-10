@@ -7,8 +7,8 @@ class Param:
 	def __init__(self):
 
 		# 
-		self.parallel_on = False
-		self.num_trials = 50
+		self.parallel_on = True
+		self.num_trials = 100
 
 		# names 
 		self.problem_name = "example8" # e.g. example1, example2, example3, ...
@@ -61,12 +61,12 @@ class Param:
 			self.value_oracle_path = None 
 
 		# settings
-		self.movie_on =True
+		self.movie_on = False
 		self.pretty_plot_on = True
 		# Toggle dense MINCO diagnostic pages in run.pdf.
 		self.detailed_visualization_on = False
 		# True: MINCO quintic trajectory planning; False: direct displacement-to-velocity propagation
-		self.use_minco_dynamics = False
+		self.use_minco_dynamics = True
 
 		# solver settings 
 		self.number_simulations = 1000

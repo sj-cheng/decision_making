@@ -51,7 +51,9 @@ from solvers.baselines import (
 from util import contains
 
 
-METHODS = ("Random", "Greedy", "Policy Only", "Search Only", "Search + Learning", "MAPPO", "Large-budget MCTS")
+METHODS = ("Random", "Greedy", "Policy Only", "Search Only", "Search Only 1000", "Search + Learning", "MAPPO", "Large-budget MCTS")
+# Bare runs keep the historical matrix. "Search Only 1000" is opt-in.
+DEFAULT_METHODS = tuple(method for method in METHODS if method != "Search Only 1000")
 
 # Fixed maps, independent of future changes to Example8's training defaults.
 # Each rectangle is [[xmin, xmax], [ymin, ymax]].
@@ -75,7 +77,7 @@ def init_worker_progress(progress_queue, step_interval):
     _PROGRESS_STEP_INTERVAL = max(1, int(step_interval))
 
 
-def configure_problem(obstacle_layout="none"):
+def configure_problem(obstacle_layout="none", evader_speed=None, pursuer_speed=None):
     problem = get_problem("example8")
     # Retain the benchmark dynamics and spawn rules, changing only the map.
     # The parent and every spawned worker must use the same explicit layout.
@@ -83,16 +85,46 @@ def configure_problem(obstacle_layout="none"):
                          for rectangle in OBSTACLE_LAYOUTS[obstacle_layout]]
     problem.evader_spawn_near_obstacles = False
     problem.use_minco_dynamics = False
+    if (evader_speed is None) != (pursuer_speed is None):
+        raise ValueError("evader_speed and pursuer_speed must be set together")
+    if evader_speed is not None:
+        evader_speed = float(evader_speed)
+        pursuer_speed = float(pursuer_speed)
+        if evader_speed <= 0.0 or pursuer_speed <= 0.0:
+            raise ValueError("speed limits must be positive")
+        # Degenerate ranges keep initialize() from resampling a new limit.
+        problem.evader_speed_lim_range = (evader_speed, evader_speed)
+        problem.pursuer_speed_lim_range = (pursuer_speed, pursuer_speed)
+        problem.current_evader_speed_lim = evader_speed
+        problem.current_pursuer_speed_lim = pursuer_speed
+        problem.evader_acc_lim = evader_speed / problem.dt
+        problem.pursuer_acc_lim = pursuer_speed / problem.dt
+        for robot in range(problem.num_robots):
+            cap = evader_speed if robot in problem.evaders else pursuer_speed
+            for index in list(problem.vel_idxs[robot]) + list(problem.acc_idxs[robot]):
+                bound = cap if index in problem.vel_idxs[robot] else cap / problem.dt
+                problem.state_lims[int(index), :] = (-bound, bound)
+        problem.update_action_lims()
     return problem
 
 
 def problem_metadata(problem, obstacle_layout):
     protocol = ("example8_global_no_obstacle_direct_v1" if obstacle_layout == "none"
                 else "example8_global_{}_obstacles_direct_v1".format(obstacle_layout))
+    fixed_speeds = (
+        problem.evader_speed_lim_range[0] == problem.evader_speed_lim_range[1]
+        and problem.pursuer_speed_lim_range[0] == problem.pursuer_speed_lim_range[1]
+    )
+    evader_speed = float(problem.current_evader_speed_lim) if fixed_speeds else None
+    pursuer_speed = float(problem.current_pursuer_speed_lim) if fixed_speeds else None
+    if fixed_speeds:
+        protocol += "_evader{:g}_pursuer{:g}".format(evader_speed, pursuer_speed)
     return {
         "benchmark_protocol": protocol,
         "obstacle_layout": obstacle_layout,
         "obstacles": [obstacle.tolist() for obstacle in problem.obstacles],
+        "evader_speed": evader_speed,
+        "pursuer_speed": pursuer_speed,
         "use_minco_dynamics": problem.use_minco_dynamics,
         "evader_spawn_near_obstacles": problem.evader_spawn_near_obstacles,
         "split_spawn_by_team": problem.split_spawn_by_team,
@@ -175,7 +207,7 @@ def build_solver(
         )
         return get_solver("NeuralNetwork", policy_oracle=policy)
 
-    if name == "Search Only":
+    if name in ("Search Only", "Search Only 1000"):
         return get_solver(
             "C_PUCT_V1", policy_oracle=[None] * problem.num_robots,
             value_oracle=None, search_depth=100,
@@ -399,10 +431,12 @@ def method_budget(method, args, role=None):
         role_override = getattr(args, "pursuer_budget", None)
     elif role == "evader":
         role_override = getattr(args, "evader_budget", None)
-    if role_override is not None and method in {"Search Only", "Search + Learning", "Large-budget MCTS"}:
+    if role_override is not None and method in {"Search Only", "Search Only 1000", "Search + Learning", "Large-budget MCTS"}:
         return int(role_override)
     if method == "Large-budget MCTS":
         return int(args.large_budget)
+    if method == "Search Only 1000":
+        return 1000
     if method == "Search Only":
         return int(args.search_only_budget)
     if method == "Search + Learning":
@@ -625,7 +659,7 @@ RESUME_KEYS = (
     "large_budget", "beta_policy", "beta_value", "methods", "round_robin",
     "chunk_episodes", "model_iteration", "mappo_checkpoint", "pursuer_method",
     "evader_method", "pursuer_budget", "evader_budget", "limit",
-    "benchmark_protocol", "obstacle_layout", "obstacles", "model_dir",
+    "benchmark_protocol", "obstacle_layout", "obstacles", "evader_speed", "pursuer_speed", "model_dir",
     "mappo_legacy", "timing_warmup_steps",
 )
 
@@ -662,7 +696,11 @@ def run_matchup_task(task):
     """Spawn-safe worker for one independent matchup."""
     pursuer_name, evader_name, initial_states, seeds, episode_offsets, config = task
     args = argparse.Namespace(**config)
-    problem = configure_problem(getattr(args, "obstacle_layout", "none"))
+    problem = configure_problem(
+        getattr(args, "obstacle_layout", "none"),
+        evader_speed=getattr(args, "evader_speed", None),
+        pursuer_speed=getattr(args, "pursuer_speed", None),
+    )
     torch.set_num_threads(args.cpu_threads)
     # Network constructors print one line per checkpoint.  With dozens of
     # workers those messages make the parent progress display unreadable.
@@ -687,6 +725,10 @@ def main():
     parser.add_argument("--large-budget", type=int, default=50000)
     parser.add_argument("--beta-policy", type=float, default=0.5)
     parser.add_argument("--beta-value", type=float, default=0.5)
+    parser.add_argument("--evader-speed", type=float, default=None,
+                        help="fix every evader axis speed limit; default keeps the per-episode V7 range")
+    parser.add_argument("--pursuer-speed", type=float, default=None,
+                        help="fix every pursuer axis speed limit; default keeps the per-episode V7 range")
     parser.add_argument("--obstacle-layout", choices=list(OBSTACLE_LAYOUTS), default="none",
                         help="fixed obstacle map; none preserves the original benchmark")
     parser.add_argument("--output", default="../current/benchmarks")
@@ -728,7 +770,7 @@ def main():
                         help="worker progress heartbeat interval in environment steps")
     parser.add_argument("--no-progress", action="store_true", help="disable terminal progress bars")
     parser.add_argument("--limit", type=int, default=0, help="limit records per matchup for smoke tests")
-    parser.add_argument("--methods", nargs="+", default=list(METHODS))
+    parser.add_argument("--methods", nargs="+", default=list(DEFAULT_METHODS))
     args = parser.parse_args()
     if args.workers < 1 or args.cpu_threads < 1 or args.chunk_episodes < 0:
         parser.error("workers/cpu-threads must be positive; chunk-episodes must be nonnegative")
@@ -741,7 +783,7 @@ def main():
     args.root = args.root or os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     args.mappo_checkpoint = resolve_mappo_checkpoint(args.root, args.mappo_checkpoint)
     os.makedirs(args.output, exist_ok=True)
-    problem = configure_problem(args.obstacle_layout)
+    problem = configure_problem(args.obstacle_layout, args.evader_speed, args.pursuer_speed)
     scene = problem_metadata(problem, args.obstacle_layout)
     print("protocol={} obstacles={}".format(scene["benchmark_protocol"], len(problem.obstacles)), flush=True)
     seeds = list(range(1000, 1000 + args.seeds))
