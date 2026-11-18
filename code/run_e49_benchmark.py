@@ -103,11 +103,27 @@ def load_episode(path):
         return pickle.load(handle)
 
 
-def observation(state, boxes, horizon):
+def observation(state, boxes, horizon, target_visibility=None, camera_frame=None,
+                headings=None):
     from solvers.e45_team_adapter import public_observation
-    obs = public_observation(int(state[8, 0]), state[4:8, 0].reshape(2, 2),
+    positions = state[4:8, 0].reshape(2, 2)
+    targets = state[:4, 0].reshape(2, 2)
+    if camera_frame is not None:
+        camera = dict(gimbal_yaw=np.asarray(camera_frame.gimbal_yaw).tolist(),
+                      headings=np.zeros(len(positions)).tolist() if headings is None else np.asarray(headings).tolist(),
+                      fov_rad=float(getattr(camera_frame, 'fov_rad', np.deg2rad(60.))),
+                      max_range=float(getattr(camera_frame, 'max_range', 20.)),
+                      state=list(camera_frame.state),
+                      lost_reason=list(camera_frame.lost_reason))
+        obs = public_observation(int(state[8, 0]), positions, targets,
+                                 state[11:13, 0] > .5, state[9:11, 0] > .5,
+                                 boxes, reports_override=camera_frame.reports,
+                                 visibility_model='camera_fov', camera_state=camera)
+        obs['trajectory_planner'] = 'minco'
+    else:
+        obs = public_observation(int(state[8, 0]), positions,
                              state[:4, 0].reshape(2, 2), state[11:13, 0] > .5,
-                             state[9:11, 0] > .5, boxes)
+                             state[9:11, 0] > .5, boxes, visible=target_visibility)
     obs['remaining'] = horizon-obs['step']
     return obs
 

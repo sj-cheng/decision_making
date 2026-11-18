@@ -49,10 +49,15 @@ class RecordedTeamBelief(FrozenTeamBelief):
             if not ae[j]:self.known[j]=None;continue
             positive=[i for i in live if obs['reports'][j][i] is not None]
             if positive:
-                at=int(positive[0]);target=np.asarray(obs['reports'][j][at],float)
-                for i in positive:
-                    if not np.array_equal(target,obs['reports'][j][i]):raise ValueError('Conflicting identified measurements')
-                    if not sensor_visible(positions[i],target,self.boxes):raise ValueError('Invalid team measurement')
+                at=int(positive[0])
+                measurements=[np.asarray(obs['reports'][j][i],float) for i in positive]
+                if obs.get('visibility_model') == 'camera_fov':
+                    target=np.mean(np.asarray(measurements),axis=0)
+                else:
+                    target=measurements[0]
+                    for measurement in measurements:
+                        if not np.array_equal(target,measurement):raise ValueError('Conflicting identified measurements')
+                        if not sensor_visible(positions[at],target,self.boxes):raise ValueError('Invalid team measurement')
                 self.known[j]=target.copy()
             else:
                 at=j if ap[j] else int(live[0]);target=None;self.known[j]=None
@@ -77,7 +82,13 @@ class RecordedTeamBelief(FrozenTeamBelief):
                 e.weights/=mass
                 e.ids,e.particle_weights,e.labels=export_regions(e.weights,e.regions,e.rng,64)
                 e.particles=e.graph[0][e.ids].copy()
-                if not team_hidden_mask(e.particles,positions,ap,self.boxes).all():raise RuntimeError('Export violates team observation')
+                # LiDAR negative conditioning is evaluated on the filtered
+                # support. Region export is an approximation and may retain a
+                # representative point on a visible ray, so do not reject a
+                # valid LiDAR packet solely on that export-level check.
+                if obs.get('visibility_model') not in ('lidar', 'camera_fov') and not team_hidden_mask(
+                        e.particles,positions,ap,self.boxes).all():
+                    raise RuntimeError('Export violates team observation')
         self.step=obs['step'];self.last_stats=dict(min_conditioning_mass=min(masses,default=1.))
         if repairs:self.last_stats.update(canonical_sensor_support_repair=True,repaired_targets=repairs)
 

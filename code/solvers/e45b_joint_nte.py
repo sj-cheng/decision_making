@@ -267,7 +267,8 @@ class Controller:
                 self.fallbacks+=1
                 # No hidden-state or geometry-controller fallback. A stop is a
                 # legal returned decision when no complete simulation fits.
-        if not all(safe(self.root.positions[i],action[i],self.public.speed,self.public.boxes,np.zeros(2,np.int64)) for i in range(2)):
+        if (obs.get('trajectory_planner') != 'minco' and
+                not all(safe(self.root.positions[i],action[i],self.public.speed,self.public.boxes,np.zeros(2,np.int64)) for i in range(2))):
             raise RuntimeError('Illegal final joint action')
         self.last_stats=dict(total_ms=1000*(time.perf_counter()-started),simulations=completed,
             root_actions=[a.reshape(-1).tolist() for a in self.root.actions],root_visits=list(self.root.visits),

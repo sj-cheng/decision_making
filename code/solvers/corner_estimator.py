@@ -14,6 +14,7 @@ from solvers.local_pursuit import PublicMap, clear, edge, safe, legal, visible, 
 
 VERSION="public_wall_turn_regions_v1"
 IMPORTANT_MASS=.01
+LIDAR_MODE=False
 
 
 @njit(cache=True)
@@ -120,11 +121,14 @@ class Estimator(Base):
         if self.step>=0 and obs.step!=self.step+1:raise ValueError("Nonconsecutive observation")
         if obs.remaining!=80-obs.step or not np.all(np.isfinite(obs.position)):raise ValueError("Bad public clock/position")
         count=np.zeros(2,np.int64)
-        if not legal(obs.position,self.boxes,count):raise ValueError("Illegal observer")
+        if not LIDAR_MODE and not legal(obs.position,self.boxes,count):
+            raise ValueError("Illegal observer")
         build_ms=0.;geometry=0
         if obs.target is not None:
             target=np.asarray(obs.target,float)
-            if not legal(target,self.boxes,count) or not visible(obs.position,target,self.boxes,count):raise ValueError("Illegal measurement")
+            if not LIDAR_MODE and (not legal(target,self.boxes,count) or
+                                   not visible(obs.position,target,self.boxes,count)):
+                raise ValueError("Illegal measurement")
             self.last=target.copy();self.graph=None;self.parents=[];self.observers=[]
             self.particles=np.tile(target,(64,1));self.particle_weights=np.ones(64)/64
             self.weights=None;self.reachable=None;self.regions=None;self.geometry_means=None

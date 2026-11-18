@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>e50_runtime_bridge</name>
+  <version>0.1.0</version>
+  <description>ROS2 input and command gate for the E50 distributed runtime.</description>
+  <maintainer email="deployment@example.invalid">E50 deployment</maintainer>
+  <license>BSD-3-Clause</license>
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+</package>

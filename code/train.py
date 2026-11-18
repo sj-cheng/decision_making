@@ -8,7 +8,9 @@ import tempfile
 import itertools
 import time 
 import os
+import sys
 import glob
+import json
 import multiprocessing as mp
 from collections import deque
 from tqdm import tqdm 
@@ -17,8 +19,12 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.nn import MSELoss
 
 # custom
+# solvers/c_puct.py and cpp/ are hash-protected by finished experiments, so V4
+# swaps in its own extension (build_v4_training_search.py) before c_puct loads.
+from cpp.build_v4 import bindings_v4
+sys.modules["cpp.build.bindings"] = bindings_v4
 import plotter 
-from problems.problem import get_problem
+from problems.example8_v4 import Example8V4
 from solvers.solver import get_solver 
 from learning.oracles import get_oracles
 from run import run_instance
@@ -43,11 +49,10 @@ value_oracle_name = "deterministic"
 
 # Policy input/state semantics changed with the observation-memory features;
 # keep their datasets and checkpoints isolated from the old 264-input models.
-# This run uses the per-robot progress reward, deterministic policy diagnostics,
-# and the reachable-state mix below.  Keep its data separate from the older v2
-# targets, which were generated with the previous reward and search protocol.
+# V4 retrains on Example8's dense map with equal axis speeds and a longer
+# horizon.  Keep it separate from v3, which used the unequal speed ranges.
 artifact_root = os.path.abspath(
-	os.path.join(os.path.dirname(__file__), "../current/memory_observation_v3")
+	os.path.join(os.path.dirname(__file__), "../current/memory_observation_v4")
 )
 dirname = "{}/models".format(artifact_root)
 data_dirname = "{}/data".format(artifact_root)
@@ -59,6 +64,16 @@ loss_plot_on = False
 eval_on = False
 # learning
 L = 80
+# Equal speed removes the pursuer's closing advantage, so games that used to
+# finish inside 80 steps now run longer.  120 keeps the same decision rate.
+episode_horizon = 120
+# 1.2 random steps often land inside a 1.5 m block, so most expansions ended at
+# the -1 collision penalty and the search taught near-zero steps.
+equal_axis_speed = 0.6
+# Pursuers get the evaders' direction and step-length terms; without them
+# their fitted steps kept shrinking between iterations.
+pursuer_direction_loss_weight = 0.50
+pursuer_magnitude_loss_weight = 1.50
 # v3 is a new, empty root, so the first run starts from l=0.  Keeping resume
 # enabled thereafter lets an interrupted v3 run continue without deleting its
 # newly generated data; the old v2 root is never consulted.
@@ -799,6 +814,9 @@ def train_model(problem,train_dataset,test_dataset,l,oracle_name,robot=0,resume_
 			force = True
 			)
 		model = model[robot]
+		if robot in problem.pursuers:
+			model.direction_loss_weight = pursuer_direction_loss_weight
+			model.magnitude_loss_weight = pursuer_magnitude_loss_weight
 	elif oracle_name == "value":
 		model_fn = value_oracle_path
 		init_path = model_fn if (resume_from_existing and os.path.exists(model_fn)) else None
@@ -989,13 +1007,84 @@ def self_play(problem,policy_oracle,value_oracle,l):
 		return sim_results
 
 
+def configure_training_problem(problem):
+	"""Keep Example8's dense map, then fix equal speeds and the horizon.
+
+	The 17 interior rectangles are the map counted as 18 obstacles once the
+	arena boundary is included.  Degenerate speed ranges stop initialize()
+	from sampling the two teams apart.
+	"""
+	if len(problem.obstacles) != 17:
+		raise RuntimeError(
+			"V4 expects Example8's dense map (17 interior rectangles), found {}".format(
+				len(problem.obstacles)
+			)
+		)
+	speed = float(equal_axis_speed)
+	problem.evader_speed_lim_range = (speed, speed)
+	problem.pursuer_speed_lim_range = (speed, speed)
+	problem.current_evader_speed_lim = speed
+	problem.current_pursuer_speed_lim = speed
+	problem.evader_acc_lim = speed / problem.dt
+	problem.pursuer_acc_lim = speed / problem.dt
+	for robot in range(problem.num_robots):
+		velocity_indices = {int(index) for index in problem.vel_idxs[robot]}
+		for index in list(problem.vel_idxs[robot]) + list(problem.acc_idxs[robot]):
+			bound = speed if int(index) in velocity_indices else speed / problem.dt
+			problem.state_lims[int(index), :] = (-bound, bound)
+	problem.update_action_lims()
+
+	problem.tf = float(episode_horizon)
+	problem.times = np.arange(problem.t0, problem.tf + problem.dt, problem.dt)
+	problem.state_lims[problem.time_idx, :] = (0.0, problem.tf)
+	for robot in range(problem.num_robots):
+		age_index = int(problem.memory_idxs[robot][4])
+		problem.state_lims[age_index, :] = (0.0, problem.tf)
+	return problem
+
+
+def write_training_protocol(problem):
+	protocol_path = os.path.join(artifact_root, "protocol.json")
+	protocol = {
+		"name": "memory_observation_v4",
+		"map": "example8_dense_17_interior_counted_as_18_with_boundary",
+		"num_interior_obstacles": len(problem.obstacles),
+		"obstacles": [np.asarray(obstacle, dtype=float).tolist() for obstacle in problem.obstacles],
+		"evader_axis_speed": float(problem.current_evader_speed_lim),
+		"pursuer_axis_speed": float(problem.current_pursuer_speed_lim),
+		"episode_horizon": float(problem.tf),
+		"iterations": int(L),
+		"num_simulations": int(num_simulations),
+		"search_depth": int(search_depth),
+		"num_D_pi": int(num_D_pi),
+		"num_D_v": int(num_D_v),
+		"use_minco_dynamics": bool(problem.use_minco_dynamics),
+		"evader_progress_reward_weight": float(problem.evader_progress_reward_weight),
+		"evader_survival_reward_per_step": float(problem.evader_survival_reward),
+		"evader_capture_penalty": "constant -0.5 per capture",
+		"search_extension": bindings_v4.__file__,
+		"search_extension_manifest": json.load(
+			open(os.path.join(os.path.dirname(bindings_v4.__file__), "build_manifest.json"))
+		),
+		"pursuer_direction_loss_weight": float(pursuer_direction_loss_weight),
+		"pursuer_magnitude_loss_weight": float(pursuer_magnitude_loss_weight),
+		"model_dir": dirname,
+	}
+	with open(protocol_path, "w") as handle:
+		json.dump(protocol, handle, indent=2)
+		handle.write("\n")
+	print("wrote {}".format(protocol_path))
+
+
 if __name__ == '__main__':
 
-	problem = get_problem(problem_name)
+	problem = Example8V4()
 	if hasattr(problem, 'use_minco_dynamics'):
 		problem.use_minco_dynamics = use_minco_dynamics
+	configure_training_problem(problem)
 
 	prepare_artifact_dirs(clean=not resume_training)
+	write_training_protocol(problem)
 
 	num_D_pi_samples = num_D_pi
 	if mode == 2:

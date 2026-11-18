@@ -28,6 +28,11 @@ def escape_one(at,pursuers,active,boxes,vertices,pdist,edist,pursuer_speed,depth
             for action in ACTIONS:
                 if not safe(q,action,1.,boxes,count):continue
                 nq=q+action;minimum=100.;geodesic=100.;hidden=True
+                # Keep the escape reference away from the simulator border.
+                # Without this guard the lookahead prefers an outward diagonal
+                # until the runner rejects it at +/-10 m, which makes the
+                # evader appear frozen in a corner.
+                if abs(nq[0]) > 9. or abs(nq[1]) > 9.:continue
                 for i in range(2):
                     if active[i]:
                         minimum=min(minimum,np.sqrt(np.sum((nq-nextp[i])**2)))
@@ -36,7 +41,12 @@ def escape_one(at,pursuers,active,boxes,vertices,pdist,edist,pursuer_speed,depth
                 survives=minimum>=1.
                 margin=min(minimum,10.)+.25*min(geodesic,20.)+(.4 if hidden else 0.)
                 boundary=max(0.,min(10.-abs(nq[0]),10.-abs(nq[1])))
-                score=scores[k]+(.9**level)*(margin+.05*min(boundary,2.))
+                # Prefer open interior space strongly enough to beat a tiny
+                # distance-margin gain from hugging a wall or corner.
+                interior=.35*min(boundary,2.)
+                if boundary < 1.5:
+                    interior -= 2.0*(1.5-boundary)**2
+                score=scores[k]+(.9**level)*(margin+interior)
                 if not survives:score-=1000.+100.*(depth-level)
                 ns[size,:2]=nq;ns[size,2:]=nextp.reshape(4)
                 nf[size]=action if level==0 else first[k];value[size]=score;live[size]=survives;size+=1

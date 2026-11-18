@@ -12,6 +12,8 @@ from numba import njit
 from solvers.frozen_d_search_interface import loader,PublicMap,Observation,sensor_visible,geometric_candidates,move,route
 from solvers.e44_branch_nte import Controller as NTE
 from l45_corner_shared_20261025.corner_estimator import export_regions
+from solvers.e50_lidar_map import lidar_target_visibility
+from solvers.e50_camera import wrap_angle, segment_clear
 
 
 @njit(cache=True)
@@ -24,14 +26,81 @@ def team_hidden_mask(points,observers,active,boxes):
     return allowed
 
 
-def public_observation(step,positions,targets,active_p,active_e,boxes):
-    """Environment-side sensor; only this output is passed into a controller."""
-    reports=[]
-    for j in range(2):
-        reports.append([targets[j].tolist() if active_e[j] and active_p[i]
-            and sensor_visible(positions[i],targets[j],boxes) else None for i in range(2)])
-    return dict(step=int(step),remaining=80-int(step),positions=positions.tolist(),
-        active_p=active_p.astype(bool).tolist(),active_e=active_e.astype(bool).tolist(),reports=reports)
+def team_hidden_mask_lidar(points, observers, active, boxes, num_rays=256,
+                           target_radius=.25):
+    """Negative target observation mask using discrete LiDAR returns."""
+    points = np.asarray(points, dtype=float)
+    observers = np.asarray(observers, dtype=float)
+    active = np.asarray(active, dtype=bool)
+    if not len(points):
+        return np.ones(0, dtype=bool)
+    seen = lidar_target_visibility(observers[active], points, boxes,
+                                   num_rays=int(num_rays),
+                                   target_radius=float(target_radius))
+    allowed = np.ones(len(points), dtype=bool)
+    if np.any(active):
+        allowed[np.any(seen, axis=0)] = False
+    return allowed
+
+
+def team_hidden_mask_camera(points, observers, active, boxes, camera=None):
+    """Negative camera observation only removes particles in the current FOV."""
+    points = np.asarray(points, float).reshape(-1, 2)
+    observers = np.asarray(observers, float).reshape(-1, 2)
+    active = np.asarray(active, bool)
+    if camera is None:
+        return np.ones(len(points), dtype=bool)
+    camera = dict(camera or {})
+    yaw = np.asarray(camera.get('gimbal_yaw', np.zeros(len(observers))), float)
+    heading = np.asarray(camera.get('headings', np.zeros(len(observers))), float)
+    fov = float(camera.get('fov_rad', np.deg2rad(60.)))
+    allowed = np.ones(len(points), dtype=bool)
+    if fov <= 0.:
+        return allowed
+    for q in range(len(points)):
+        for i in np.flatnonzero(active):
+            delta = points[q] - observers[i]
+            distance = float(np.linalg.norm(delta))
+            bearing = wrap_angle(np.arctan2(delta[1], delta[0]) - heading[i])
+            if distance > float(camera.get('max_range', 20.)):
+                continue
+            if abs(wrap_angle(bearing - yaw[i])) <= fov / 2. and segment_clear(observers[i], points[q], boxes):
+                allowed[q] = False
+                break
+    return allowed
+
+
+def public_observation(step,positions,targets,active_p,active_e,boxes,visible=None,
+                       reports_override=None, visibility_model=None, camera_state=None):
+    """Environment-side sensor; only this output is passed into a controller.
+
+    ``visible`` is an optional sensor-produced boolean matrix indexed by
+    pursuer and target.  It lets a deployment adapter replace the legacy
+    map-line-of-sight test with a LiDAR detector without changing the public
+    report format consumed by the controllers.
+    """
+    if visible is not None:
+        visible = np.asarray(visible, dtype=bool)
+        if visible.shape != (len(positions), len(targets)):
+            raise ValueError('visible must have shape (pursuers, targets)')
+    if reports_override is not None:
+        reports = reports_override
+    else:
+        reports=[]
+        for j in range(2):
+            reports.append([targets[j].tolist() if active_e[j] and active_p[i]
+                and (bool(visible[i, j]) if visible is not None
+                     else sensor_visible(positions[i],targets[j],boxes)) else None for i in range(2)])
+    result = dict(step=int(step),remaining=80-int(step),positions=positions.tolist(),
+                  active_p=active_p.astype(bool).tolist(),
+                  active_e=active_e.astype(bool).tolist(),reports=reports)
+    if visibility_model is not None:
+        result['visibility_model'] = str(visibility_model)
+    elif visible is not None:
+        result['visibility_model'] = 'lidar'
+    if camera_state is not None:
+        result['camera'] = camera_state
+    return result
 
 
 class TeamBelief:
@@ -51,10 +120,22 @@ class TeamBelief:
             if not ae[j]:self.known[j]=None;continue
             positive=[i for i in live if obs['reports'][j][i] is not None]
             if positive:
-                at=int(positive[0]);target=np.asarray(obs['reports'][j][at],float)
+                at=int(positive[0])
+                measurements = [np.asarray(obs['reports'][j][i], float) for i in positive]
+                if obs.get('visibility_model') == 'camera_fov':
+                    # Independent camera range/bearing estimates need not be
+                    # bit-identical.  Fuse the public estimates while keeping
+                    # the target slot identity stable for the belief update.
+                    target = np.mean(np.asarray(measurements), axis=0)
+                else:
+                    target = measurements[0]
+                    for measurement in measurements:
+                        if not np.array_equal(target, measurement):
+                            raise ValueError('Conflicting identified measurements')
                 for i in positive:
-                    if not np.array_equal(target,obs['reports'][j][i]):raise ValueError('Conflicting identified measurements')
-                    if not sensor_visible(positions[i],target,self.boxes):raise ValueError('Invalid team measurement')
+                    if obs.get('visibility_model') not in ('lidar', 'camera_fov') and not sensor_visible(
+                            positions[i], measurements[positive.index(i)], self.boxes):
+                        raise ValueError('Invalid team measurement')
                 self.known[j]=target.copy()
             else:
                 at=j if ap[j] else int(live[0]);target=None;self.known[j]=None
@@ -62,14 +143,26 @@ class TeamBelief:
             # simultaneous negative sensor likelihoods without moving time.
             e.update(Observation(obs['step'],positions[at],target,obs['remaining']))
             if target is None:
-                allowed=team_hidden_mask(e.graph[0],positions,ap,self.boxes)
+                if obs.get('visibility_model') == 'lidar':
+                    allowed=team_hidden_mask_lidar(e.graph[0],positions,ap,self.boxes)
+                elif obs.get('visibility_model') == 'camera_fov':
+                    allowed=team_hidden_mask_camera(e.graph[0],positions,ap,self.boxes,obs.get('camera'))
+                else:
+                    allowed=team_hidden_mask(e.graph[0],positions,ap,self.boxes)
                 e.weights[~allowed]=0.;e.reachable &= allowed
                 mass=float(e.weights.sum());masses.append(mass)
                 if mass<=0 or not np.isfinite(mass):raise RuntimeError('Empty team-conditioned finite-grid support')
                 e.weights/=mass
                 e.ids,e.particle_weights,e.labels=export_regions(e.weights,e.regions,e.rng,64)
                 e.particles=e.graph[0][e.ids].copy()
-                if not team_hidden_mask(e.particles,positions,ap,self.boxes).all():raise RuntimeError('Export violates team observation')
+                if obs.get('visibility_model') == 'lidar':
+                    valid_hidden = team_hidden_mask_lidar(e.particles,positions,ap,self.boxes)
+                elif obs.get('visibility_model') == 'camera_fov':
+                    valid_hidden = team_hidden_mask_camera(e.particles,positions,ap,self.boxes,obs.get('camera'))
+                else:
+                    valid_hidden = team_hidden_mask(e.particles,positions,ap,self.boxes)
+                if obs.get('visibility_model') not in ('lidar', 'camera_fov') and not valid_hidden.all():
+                    raise RuntimeError('Export violates team observation')
         self.step=obs['step'];self.last_stats=dict(min_conditioning_mass=min(masses,default=1.))
 
     def signature(self):

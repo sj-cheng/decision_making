@@ -14,11 +14,38 @@ import plotter
 from util import init_tqdm, update_tqdm
 
 
+def apply_half_obstacles_double_speed(problem):
+	# Four equal 4x4 blocks, one per quadrant. Wall margin and the gap
+	# between blocks are both 4 on the [-10, 10] arena.
+	problem.obstacles = [
+		np.array([[-8.0, -4.0], [-8.0, -4.0]], dtype=float),
+		np.array([[-8.0, -4.0], [4.0, 8.0]], dtype=float),
+		np.array([[4.0, 8.0], [-8.0, -4.0]], dtype=float),
+		np.array([[4.0, 8.0], [4.0, 8.0]], dtype=float),
+	]
+	problem.pursuer_speed_lim_range = tuple(2.0 * v for v in problem.pursuer_speed_lim_range)
+	problem.evader_speed_lim_range = problem.pursuer_speed_lim_range
+	problem.pursuer_acc_lim *= 2.0
+	problem.evader_acc_lim = problem.pursuer_acc_lim
+	problem.current_pursuer_speed_lim *= 2.0
+	problem.current_evader_speed_lim = problem.current_pursuer_speed_lim
+	problem.memory_velocity_scale *= 2.0
+	# Velocity rows 13:21 and acceleration rows 21:29, then each memory velocity pair.
+	problem.state_lims[13:29, :] *= 2.0
+	problem.state_lims[13:17, :] = problem.state_lims[17:21, :]
+	problem.state_lims[21:25, :] = problem.state_lims[25:29, :]
+	for robot in range(problem.num_robots):
+		base = problem.base_state_dim + robot * problem.memory_feature_dim
+		problem.state_lims[base + 2:base + 4, :] *= 2.0
+	problem.update_action_lims()
+
+
 def make_instance(param):
 
 	instance = dict() 
 
 	problem = get_problem(param.problem_name)
+	apply_half_obstacles_double_speed(problem)
 	if hasattr(problem, "set_visualization_detail"):
 		problem.set_visualization_detail(param.detailed_visualization_on)
 	if hasattr(param, 'use_minco_dynamics') and hasattr(problem, 'use_minco_dynamics'):
@@ -136,6 +163,15 @@ def _worker_run_instance(arg):
 if __name__ == '__main__':
 
 	param = Param()
+	scenario = get_problem(param.problem_name)
+	apply_half_obstacles_double_speed(scenario)
+	print(
+		'obstacles {} | evader speed {} | pursuer speed {}'.format(
+			len(scenario.obstacles),
+			scenario.evader_speed_lim_range,
+			scenario.pursuer_speed_lim_range,
+		)
+	)
 
 	print('running sim...')
 	if param.parallel_on:
@@ -168,13 +204,8 @@ if __name__ == '__main__':
 	# plotting 
 	print('plotting results...')
 	for sim_result in sim_results:
-		plotter.plot_sim_result(sim_result)
 		problem = sim_result["instance"]["problem"]
 		problem.render(states=sim_result["states"], actions=sim_result["actions"])
-		if param.detailed_visualization_on and hasattr(problem, "plot_run_diagnostics"):
-			problem.plot_run_diagnostics(sim_result)
-		#if param.pretty_plot_on and hasattr(sim_result["instance"]["problem"], 'pretty_plot') :
-		#	sim_result["instance"]["problem"].pretty_plot(sim_result)
 
 	plotter.save_figs("../current/plots/run.pdf")
 	plotter.open_figs("../current/plots/run.pdf")

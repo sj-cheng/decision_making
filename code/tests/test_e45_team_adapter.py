@@ -1,6 +1,8 @@
 import unittest
 import numpy as np
-from solvers.e45_team_adapter import TeamBelief,TeamController,optimal_assignment,public_observation,team_hidden_mask
+from solvers.e45_team_adapter import (TeamBelief,TeamController,optimal_assignment,
+                                       public_observation,team_hidden_mask,
+                                       team_hidden_mask_lidar)
 from solvers.frozen_d_search_interface import sensor_visible
 from run_e45_team_pilot import make_case,checkpoint
 from corner_estimator_scenarios import original_model
@@ -32,6 +34,20 @@ class TeamTests(unittest.TestCase):
         o=public_observation(0,positions,targets,np.ones(2,bool),np.ones(2,bool),boxes)
         self.assertIsNone(o['reports'][0][1]);self.assertIsNone(o['reports'][1][0])
         self.assertEqual(o['reports'][0][0],[-3.,0.]);self.assertEqual(o['reports'][1][1],[3.,0.])
+
+    def test_lidar_visibility_mode_uses_discrete_returns(self):
+        positions=np.array([[0.,0.],[0.,2.]])
+        targets=np.array([[3.,0.],[3.,2.]])
+        boxes=np.empty((0,2,2))
+        o=public_observation(0,positions,targets,np.ones(2,bool),np.ones(2,bool),boxes,
+                             visible=np.ones((2,2),bool))
+        self.assertEqual(o['visibility_model'],'lidar')
+        wall=np.array([[[1.,2.],[-1.,1.]]])
+        self.assertFalse(team_hidden_mask_lidar(np.array([[3.,0.]]),
+                                                positions[:1], np.ones(1,bool),
+                                                np.empty((0,2,2))).all())
+        self.assertTrue(team_hidden_mask_lidar(np.array([[3.,0.]]),
+                                               positions[:1], np.ones(1,bool), wall).all())
 
     def test_original_capture_retires_exactly_one_pair(self):
         p=original_model([],1.1);s=np.zeros((p.state_dim,1));s[p.active_idxs,0]=1

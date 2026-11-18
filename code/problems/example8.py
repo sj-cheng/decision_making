@@ -580,6 +580,7 @@ class Example8(Problem):
 
 		self.current_evader_speed_lim = 0.8
 		self.current_pursuer_speed_lim = 1.0
+		self.memory_velocity_scale = 2.4
 		self.update_action_lims()
 		self.update_init_lims()
 
@@ -910,7 +911,11 @@ class Example8(Problem):
 					relative_velocity = (
 						rel - previous_state[memory_idx[0:2], 0]
 					) / float(dt)
-				relative_velocity = np.clip(relative_velocity, -2.4, 2.4)
+				relative_velocity = np.clip(
+					relative_velocity,
+					-self.memory_velocity_scale,
+					self.memory_velocity_scale,
+				)
 				next_state[memory_idx[0:2], 0] = rel
 				next_state[memory_idx[2:4], 0] = relative_velocity
 				next_state[memory_idx[4], 0] = 0.0
@@ -923,8 +928,8 @@ class Example8(Problem):
 		return np.array((
 			memory[0] / 20.0,
 			memory[1] / 20.0,
-			memory[2] / 2.4,
-			memory[3] / 2.4,
+			memory[2] / self.memory_velocity_scale,
+			memory[3] / self.memory_velocity_scale,
 			np.clip(memory[4] / max(self.tf, 1e-8), 0.0, 1.0),
 			np.clip(memory[5], 0.0, 1.0),
 		), dtype=float).reshape((-1, 1))
@@ -1662,6 +1667,11 @@ class Example8(Problem):
 				render_positions = self.sample_render_positions(states, robot, actions=actions)
 
 				ax.plot(render_positions[:,0], render_positions[:,1], color=colors[robot])
+				ax.plot(
+					states[:,robot_state_idxs[0]], states[:,robot_state_idxs[1]],
+					linestyle='None', marker='o', markersize=3.2,
+					markerfacecolor=colors[robot], markeredgecolor=colors[robot],
+				)
 				ax.plot(states[0,robot_state_idxs[0]], states[0,robot_state_idxs[1]], color=colors[robot],marker='o')
 				ax.plot(states[-1,robot_state_idxs[0]], states[-1,robot_state_idxs[1]], color=colors[robot],marker='s')
 
@@ -1911,6 +1921,24 @@ class Example8(Problem):
 					ax.add_patch(circ)
 			self.render(fig=fig,ax=ax)
 
+	def _draw_pretty_plot_scene(self, ax, state):
+		"""Obstacles, fixed robot positions and axis limits, without a trajectory."""
+		state = np.asarray(state, dtype=float).reshape((-1,))
+		self._draw_obstacles(ax)
+		colors = plotter.get_n_colors(self.num_robots)
+		labels = ["Evader1", "Evader2", "Pursuer1", "Pursuer2"]
+		for robot in range(self.num_robots):
+			idxs = self.state_idxs[robot]
+			ax.plot(
+				state[idxs[0]], state[idxs[1]],
+				color=colors[robot], marker='o', linestyle='None', label=labels[robot],
+			)
+		ax.legend(loc='best')
+		lims = self.state_lims
+		ax.set_xlim((lims[0, 0], lims[0, 1]))
+		ax.set_ylim((lims[1, 0], lims[1, 1]))
+		ax.set_aspect((lims[1, 1] - lims[1, 0]) / (lims[0, 1] - lims[0, 0]))
+
 	# 可视化：综合绘制价值函数等高线与策略箭头场（在初始状态周围采样）
 	def pretty_plot(self,sim_result):
 
@@ -1922,7 +1950,6 @@ class Example8(Problem):
 
 			for robot in [0,1,2,3]:
 
-				fig,ax = plt.subplots()
 				inital_state = sim_result["states"][0]
 				trajectory_states = np.asarray(sim_result["states"])
 				# A policy field is evaluated at many hypothetical positions for one
@@ -1961,7 +1988,8 @@ class Example8(Problem):
 				state_array = np.stack(states, axis=0)
 				state_points = state_array[:, :, 0]
 
-				# plot value func contours
+				# Value heatmap and policy arrows are separate figures. The rollout
+				# trajectory is not drawn; it used to cover the field.
 				if sim_result["instance"]["value_oracle"] is not None:
 					value_oracle = sim_result["instance"]["value_oracle"]
 					values = []
@@ -1970,10 +1998,12 @@ class Example8(Problem):
 						values.append(value)
 					values = np.array(values).squeeze(axis=2)
 
+					fig,ax = plt.subplots()
 					pcm = ax.tricontourf(state_points[:,robot_idxs[0]],state_points[:,robot_idxs[1]],values[:,robot])
 					fig.colorbar(pcm,ax=ax)
+					self._draw_pretty_plot_scene(ax, inital_state)
+					ax.set_title("Robot {} value field (historical memory snapshot)".format(robot + 1))
 
-				# plot policy function
 				if not all([a is None for a in sim_result["instance"]["policy_oracle"]]):
 					policy_oracle = sim_result["instance"]["policy_oracle"]
 					actions = []
@@ -1984,8 +2014,116 @@ class Example8(Problem):
 							action = policy_oracle[robot].eval(self, state, robot)
 						actions.append(action)
 					actions = np.array(actions).squeeze(axis=2)
+					fig,ax = plt.subplots()
 					ax.quiver(state_points[:,robot_idxs[0]],state_points[:,robot_idxs[1]],actions[:,0],actions[:,1])
+					self._draw_pretty_plot_scene(ax, inital_state)
 					ax.set_title("Robot {} policy field (historical memory snapshot)".format(robot + 1))
 
-				# plot final trajectory , obstacles and limits
-				self.render(fig=fig,ax=ax,states=sim_result["states"])
+	def robot_label(self, robot):
+		return ("Evader 1", "Evader 2", "Pursuer 1", "Pursuer 2")[robot]
+
+	def memory_reference_state(self, states, robot):
+		"""Pick the trajectory state where this robot most recently saw an opponent.
+
+		Same rule as pretty_plot: a field that rebuilds memory at every probed
+		position loses the hidden-target cue the policy was trained to use.
+		"""
+		states = np.asarray(states, dtype=float)
+		if states.ndim == 3:
+			states = states[:, :, 0]
+		reference = states[0]
+		memory_idx = self.memory_idxs[robot]
+		best_score = float(reference[memory_idx[5]])
+		for candidate in states:
+			score = float(candidate[memory_idx[5]])
+			if score > best_score:
+				reference = candidate
+				best_score = score
+		return reference.reshape((-1, 1)), best_score
+
+	def sample_robot_field(self, reference_state, robot, resolution=40):
+		"""Move one robot over a fixed grid. Every other physical entry, including
+		the frozen memory snapshot, stays at reference_state.
+		"""
+		reference_state = np.asarray(reference_state, dtype=float).reshape((-1, 1))
+		robot_idxs = self.state_idxs[robot]
+		xs = np.linspace(-9.0, 9.0, resolution)
+		ys = np.linspace(-9.0, 9.0, resolution)
+		states = []
+		points = []
+		for y in ys:
+			for x in xs:
+				state = np.array(reference_state, copy=True)
+				state[robot_idxs, 0] = (x, y)
+				if self.check_obstacle_collision(state, robot):
+					continue
+				if not contains(state[robot_idxs, :], self.state_lims[robot_idxs, :]):
+					continue
+				states.append(state)
+				points.append((x, y))
+		return np.asarray(points, dtype=float), states
+
+	def _draw_field_scene(self, ax, reference_state, queried_robot):
+		reference_state = np.asarray(reference_state, dtype=float).reshape((-1, 1))
+		self._draw_obstacles(ax)
+		colors = ("#1f77b4", "#d62728", "#e377c2", "#17becf")
+		for robot in range(self.num_robots):
+			position = reference_state[self.state_idxs[robot], 0]
+			queried = robot == queried_robot
+			ax.scatter(
+				position[0], position[1],
+				s=110 if queried else 70,
+				c=colors[robot],
+				marker="o" if robot in self.evaders else "s",
+				edgecolors="black",
+				linewidths=0.8,
+				zorder=5,
+				label=self.robot_label(robot) + (" (queried)" if queried else ""),
+			)
+		ax.set_xlim(-10, 10)
+		ax.set_ylim(-10, 10)
+		ax.set_aspect("equal")
+		ax.set_xlabel("x [m]")
+		ax.set_ylabel("y [m]")
+		ax.set_xticks([-10, -5, 0, 5, 10])
+		ax.set_yticks([-10, -5, 0, 5, 10])
+		ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.14), ncol=2, frameon=False, fontsize=8)
+
+	def plot_policy_field(self, points, actions, reference_state, robot):
+		"""Policy arrow field. Magnitude colors the arrows so the colorbar says
+		how large a step π_θ commands; the arrow direction is the command.
+		"""
+		points = np.asarray(points, dtype=float)
+		actions = np.asarray(actions, dtype=float).reshape((-1, 2))
+		magnitude = np.linalg.norm(actions, axis=1)
+		fig, ax = plt.subplots(figsize=(5.8, 5.6))
+		arrows = ax.quiver(
+			points[:, 0], points[:, 1], actions[:, 0], actions[:, 1], magnitude,
+			cmap="YlOrRd",
+			angles="xy",
+			scale_units="xy",
+			scale=0.55,
+			width=0.0042,
+			headwidth=3.6,
+			headlength=4.4,
+			zorder=3,
+		)
+		self._draw_field_scene(ax, reference_state, robot)
+		colorbar = fig.colorbar(arrows, ax=ax, fraction=0.046, pad=0.04)
+		colorbar.set_label(r"action magnitude $\|\pi_\theta(s)\|$ [m]")
+		ax.set_title(r"Policy network $\pi_\theta$: action field of {}".format(self.robot_label(robot)))
+		fig.tight_layout()
+		return fig
+
+	def plot_value_field(self, points, values, reference_state, robot):
+		"""Value heatmap for one robot, same probed positions as the action field."""
+		points = np.asarray(points, dtype=float)
+		values = np.asarray(values, dtype=float).reshape((-1,))
+		fig, ax = plt.subplots(figsize=(5.8, 5.6))
+		contour = ax.tricontourf(points[:, 0], points[:, 1], values, levels=16, cmap="viridis", zorder=1)
+		self._draw_field_scene(ax, reference_state, robot)
+		colorbar = fig.colorbar(contour, ax=ax, fraction=0.046, pad=0.04)
+		colorbar.set_label(r"predicted return $V_\eta(s)$")
+		ax.set_title(r"Value network $V_\eta$: value field of {}".format(self.robot_label(robot)))
+		fig.tight_layout()
+		return fig
