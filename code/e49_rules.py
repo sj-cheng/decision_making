@@ -48,7 +48,8 @@ def capture_pairs(positions, targets, active_pursuers, active_evaders, boxes):
 
 
 def reference_joint_transition(positions, targets, pursuer_actions, evader_actions,
-                     active_pursuers, active_evaders, boxes, capture_dt=.01, dt=1.):
+                     active_pursuers, active_evaders, boxes, capture_dt=.01, dt=1.,
+                     evader_speed=1.5):
     """Return P,E,activeP,activeE,events. Events use relative substep time.
 
     Capture checks include t=0 and t=dt. A captured target freezes at its
@@ -57,6 +58,8 @@ def reference_joint_transition(positions, targets, pursuer_actions, evader_actio
     """
     if not (np.isfinite(capture_dt) and capture_dt > 0 and np.isfinite(dt) and dt > 0):
         raise ValueError('positive finite capture_dt and dt required')
+    if not np.isfinite(evader_speed) or evader_speed <= 0:
+        raise ValueError('positive finite evader_speed required')
     boxes = np.asarray(boxes, dtype=float).reshape(-1, 2, 2)
     p0 = np.asarray(positions, dtype=float).reshape(2, 2)
     e0 = np.asarray(targets, dtype=float).reshape(2, 2)
@@ -67,7 +70,7 @@ def reference_joint_transition(positions, targets, pursuer_actions, evader_actio
     ap = np.asarray(active_pursuers, bool).copy()
     ae = np.asarray(active_evaders, bool).copy()
     pv = np.clip(pa / dt, -1., 1.) * ap[:, None]
-    ev = np.clip(ea / dt, -1.5, 1.5) * ae[:, None]
+    ev = np.clip(ea / dt, -evader_speed, evader_speed) * ae[:, None]
     p, e = p0.copy(), e0.copy()
     events = []
     samples = np.r_[np.arange(0., dt, capture_dt), float(dt)]
@@ -107,7 +110,7 @@ def reference_joint_transition(positions, targets, pursuer_actions, evader_actio
 
 
 class E49Environment(Example8):
-    def __init__(self, boxes, horizon=80, capture_dt=.01):
+    def __init__(self, boxes, horizon=80, capture_dt=.01, *, evader_speed=1.5):
         super().__init__()
         if int(horizon) != horizon or not 40 <= horizon <= 160:
             raise ValueError('E49 horizon must be an integer in [40,160]')
@@ -119,17 +122,19 @@ class E49Environment(Example8):
         self.state_lims[self.time_idx] = [0, self.tf]
         self.obstacles = [np.asarray(b, float).copy() for b in boxes]
         self.use_minco_dynamics = False; self.swept_collision = True
-        self.evader_speed_lim_range = (1.5, 1.5)
+        if not np.isfinite(evader_speed) or evader_speed <= 0:
+            raise ValueError('positive finite evader_speed required')
+        self.evader_speed_lim_range = (float(evader_speed),) * 2
         self.pursuer_speed_lim_range = (1., 1.)
         self.randomize_speed_limits()
         self.last_capture_events = []
         self.clear_closed_loop_cache()
 
     def randomize_speed_limits(self):
-        self.current_evader_speed_lim = 1.5
+        self.current_evader_speed_lim = self.evader_speed_lim_range[0]
         self.current_pursuer_speed_lim = 1.
         for robot in range(4):
-            cap = 1.5 if robot in self.evaders else 1.
+            cap = self.current_evader_speed_lim if robot in self.evaders else 1.
             self.action_lims[self.action_idxs[robot]] = [[-cap,cap],[-cap,cap]]
             self.control_lims[self.action_idxs[robot]] = self.action_lims[self.action_idxs[robot]] / self.dt
             self.state_lims[self.vel_idxs[robot]] = [[-cap,cap],[-cap,cap]]
@@ -155,7 +160,8 @@ class E49Environment(Example8):
             [a[self.action_idxs[r],0] for r in self.pursuers],
             [a[self.action_idxs[r],0] for r in self.evaders],
             [self.is_active(s,r) for r in self.pursuers],
-            [self.is_active(s,r) for r in self.evaders],self.obstacles,self.capture_dt,dt)
+            [self.is_active(s,r) for r in self.evaders],self.obstacles,self.capture_dt,dt,
+            self.current_evader_speed_lim)
         nxt = s.copy()
         nxt[:8,0] = np.concatenate((e.ravel(),p.ravel()))
         nxt[self.active_idxs,0] = np.concatenate((ae,ap))
@@ -165,9 +171,43 @@ class E49Environment(Example8):
         self._update_observation_memory(s,nxt,dt)
         return nxt
 
+    def step_trajectories(self, state, pursuer_paths, evader_paths):
+        """Advance one cycle using synchronized positions sampled at capture_dt."""
+        samples = int(np.ceil(1. / self.capture_dt)) + 1
+        pursuer_paths = np.asarray(pursuer_paths, dtype=float)
+        evader_paths = np.asarray(evader_paths, dtype=float)
+        if pursuer_paths.shape != evader_paths.shape or pursuer_paths.shape != (samples, 2, 2):
+            raise ValueError('expected synchronized two-agent paths on the capture grid')
 
-def create_environment(boxes, horizon=80, capture_dt=.01):
-    return E49Environment(boxes, horizon, capture_dt)
+        state = np.asarray(state, float).reshape(self.state_dim, 1)
+        next_state = state.copy()
+        active_p = np.array([self.is_active(state, robot) for robot in self.pursuers])
+        active_e = np.array([self.is_active(state, robot) for robot in self.evaders])
+        evaders = evader_paths[-1].copy()
+        evaders[~active_e] = state[:4, 0].reshape(2, 2)[~active_e]
+        nearby = np.sum((pursuer_paths[:, :, None] - evader_paths[:, None, :])**2, axis=-1) < 1.
+        self.last_capture_events = []
+        for sample in np.flatnonzero((nearby & active_p[None, :, None] & active_e[None, None, :]).any(axis=(1, 2))):
+            for p, e in capture_pairs(pursuer_paths[sample], evader_paths[sample], active_p, active_e, self.obstacles):
+                active_e[e] = False
+                evaders[e] = evader_paths[sample, e]
+                self.last_capture_events.append(dict(
+                    time=float(state[self.time_idx, 0]) + min(1., sample * self.capture_dt),
+                    pursuer=p, evader=e, sample=int(sample)))
+            if not active_e.any():
+                break
+        pursuers = pursuer_paths[-1].copy()
+        pursuers[~active_p] = state[4:8, 0].reshape(2, 2)[~active_p]
+        next_state[:8, 0] = np.concatenate((evaders.ravel(), pursuers.ravel()))
+        next_state[self.active_idxs, 0] = np.concatenate((active_e, active_p))
+        next_state[13:29, 0] = 0.
+        next_state[self.time_idx, 0] += 1.
+        self._update_observation_memory(state, next_state, 1.)
+        return next_state
+
+
+def create_environment(boxes, horizon=80, capture_dt=.01, *, evader_speed=1.5):
+    return E49Environment(boxes, horizon, capture_dt, evader_speed=evader_speed)
 
 
 @lru_cache(maxsize=1)
@@ -200,6 +240,8 @@ def private_cpp():
 
 
 def make_opponent(env, seed, simulations=3000):
+    if env.current_evader_speed_lim != 1.5:
+        raise ValueError('historical RootPUCT dynamics require evader_speed=1.5')
     from solvers.root_audit_puct import RootPUCT
     from solvers.c_puct import C_PUCT
     cpp = private_cpp()
@@ -277,10 +319,10 @@ def _legal_numba(x,y,boxes):
 
 
 @njit(cache=True)
-def _joint_numba(p0,e0,pa,ea,ap,ae,boxes,capture_dt,dt):
+def _joint_numba(p0,e0,pa,ea,ap,ae,boxes,capture_dt,dt,evader_speed):
     p=p0.copy();e=e0.copy();ap=ap.copy();ae=ae.copy()
     pv=np.minimum(1.,np.maximum(-1.,pa/dt))*ap.reshape((2,1))
-    ev=np.minimum(1.5,np.maximum(-1.5,ea/dt))*ae.reshape((2,1))
+    ev=np.minimum(evader_speed,np.maximum(-evader_speed,ea/dt))*ae.reshape((2,1))
     possible=False
     for pi in range(2):
         if not ap[pi]:continue
@@ -329,15 +371,18 @@ def _joint_numba(p0,e0,pa,ea,ap,ae,boxes,capture_dt,dt):
 
 
 def joint_transition(positions, targets, pursuer_actions, evader_actions,
-                     active_pursuers, active_evaders, boxes, capture_dt=.01, dt=1.):
+                     active_pursuers, active_evaders, boxes, capture_dt=.01, dt=1.,
+                     evader_speed=1.5):
     """Accelerated reference_joint_transition; identical public return contract."""
     if not (np.isfinite(capture_dt) and 0<capture_dt<=1 and np.isfinite(dt) and dt>0):
         raise ValueError('positive finite capture_dt and dt required')
+    if not np.isfinite(evader_speed) or evader_speed <= 0:
+        raise ValueError('positive finite evader_speed required')
     arrays=[np.ascontiguousarray(a,dtype=np.float64).reshape(2,2) for a in
             (positions,targets,pursuer_actions,evader_actions)]
     if not all(np.isfinite(a).all() for a in arrays):raise ValueError('nonfinite state or action')
     p,e,ap,ae,events=_joint_numba(*arrays,np.ascontiguousarray(active_pursuers,dtype=np.bool_),
-            np.ascontiguousarray(active_evaders,dtype=np.bool_),np.ascontiguousarray(boxes,dtype=np.float64).reshape(-1,2,2),float(capture_dt),float(dt))
+            np.ascontiguousarray(active_evaders,dtype=np.bool_),np.ascontiguousarray(boxes,dtype=np.float64).reshape(-1,2,2),float(capture_dt),float(dt),float(evader_speed))
     return p,e,ap,ae,[dict(time=float(row[0]),pursuer=int(row[1]),evader=int(row[2])) for row in events]
 
 

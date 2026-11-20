@@ -1,5 +1,6 @@
 """Engineering checks only: E49 sampled capture, motion and private native parity."""
 import unittest
+from unittest.mock import patch
 import numpy as np
 from e49_rules import create_environment, joint_transition, reference_joint_transition, make_opponent
 
@@ -51,6 +52,73 @@ class E49RulesTests(unittest.TestCase):
             np.testing.assert_array_equal(p.step(n,np.ones((8,1))),n)
         p=create_environment([]);s=state(p,active=(0,1,1,1));n=p.step(s,np.ones((8,1)))
         np.testing.assert_array_equal(n[:2],s[:2]);self.assertTrue(n[11,0])
+
+    def test_geometric_evader_speed_reaches_simulator(self):
+        from solvers.e49_geometric_evader import GeometricEvader
+
+        env = create_environment([], evader_speed=2.)
+        initial = state(env, e=((0., 0.), (7., 7.)), pursuers=((-2., 0.), (-8., -8.)),
+                        active=(1, 0, 1, 0))
+        plan = GeometricEvader(evader_speed=2.).search(env, initial).best_action.reshape(8, 1)
+        self.assertEqual(np.max(np.abs(plan[:2])), 2.)
+        advanced = env.step(initial, plan)
+        np.testing.assert_array_equal(advanced[:2] - initial[:2], plan[:2])
+        np.testing.assert_array_equal(advanced[2:8], initial[2:8])
+
+    def test_sampled_curves_capture_at_crossing_and_freeze_target(self):
+        from solvers.e50_interfaces import quintic_coefficients, sample_quintic
+
+        env = create_environment([])
+        initial = state(env, e=((2., 0.), (7., 7.)), pursuers=((-2., 0.), (-8., -8.)))
+        evaders = initial[:4, 0].reshape(2, 2)
+        pursuers = initial[4:8, 0].reshape(2, 2)
+        e_path = sample_quintic(quintic_coefficients(evaders, [[-2., 0.], [7., 7.]], 1.), 1., .01)[0]
+        p_path = sample_quintic(quintic_coefficients(pursuers, [[2., 0.], [-8., -8.]], 1.), 1., .01)[0]
+        advanced = env.step_trajectories(initial, p_path, e_path)
+        self.assertFalse(advanced[env.active_idxs[0], 0])
+        self.assertTrue(advanced[env.active_idxs[1], 0])
+        event, = env.last_capture_events
+        self.assertGreater(event['sample'], 0)
+        self.assertLess(event['sample'], 100)
+        np.testing.assert_array_equal(advanced[:2, 0], e_path[event['sample'], 0])
+
+    def test_evader_minco_keeps_safe_tail_and_derivative_continuity(self):
+        from solvers.e50_evader_minco import EvaderMinco
+
+        executor = EvaderMinco(np.array([[[.5, 1.5], [-.5, .5]]]), 2., 100)
+        prefix, mode = executor.prefix(0, np.zeros(2), np.array([2., 0.]))
+        self.assertEqual(mode, 'replan')
+        self.assertGreater(np.linalg.norm(prefix['positions'][-1]), 0.)
+        for point in prefix['positions']:
+            self.assertFalse(.5 <= point[0] <= 1.5 and -.5 <= point[1] <= .5)
+        with patch('solvers.e50_evader_minco.evaluate_minco_endpoint',
+                   return_value={'feasible': False, 'positions': prefix['positions']}):
+            remaining, mode = executor.prefix(0, prefix['positions'][-1], np.array([2., 0.]))
+        self.assertEqual(mode, 'continue')
+        for key in ('positions', 'velocities', 'accelerations'):
+            np.testing.assert_array_equal(prefix[key][-1], remaining[key][0])
+        np.testing.assert_allclose(remaining['velocities'][-1], 0., atol=1e-10)
+        np.testing.assert_allclose(remaining['accelerations'][-1], 0., atol=1e-10)
+
+    def test_shared_waypoint_preserves_velocity_and_can_finish_braking(self):
+        from solvers.e50_evader_minco import EvaderMinco
+
+        executor = EvaderMinco(np.empty((0, 2, 2)), 1.5, 100,
+                               max_acceleration=1.5, continuous_speed=True)
+        prefix, mode = executor.prefix(0, np.zeros(2), np.array([1.5, 0.]))
+        self.assertEqual(mode, 'pass_through')
+        self.assertGreater(prefix['velocities'][-1, 0], .1)
+        with patch('solvers.e50_evader_minco.evaluate_minco_endpoint',
+                   return_value={'feasible': False}):
+            while 0 in executor.tail:
+                remaining, mode = executor.prefix(0, prefix['positions'][-1], np.array([1.5, 0.]))
+                self.assertEqual(mode, 'continue')
+                for key in prefix:
+                    self.assertEqual(remaining[key].shape, (101, 2))
+                    np.testing.assert_allclose(remaining[key][0], prefix[key][-1], atol=1e-10)
+                prefix = remaining
+        np.testing.assert_allclose(prefix['velocities'][-1], 0., atol=1e-10)
+        np.testing.assert_allclose(prefix['accelerations'][-1], 0., atol=1e-10)
 
     def test_original_collision_endpoint(self):
         from corner_estimator_scenarios import original_model

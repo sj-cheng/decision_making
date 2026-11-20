@@ -63,6 +63,7 @@ class AgentObservation:
     belief: object
     peer_messages: tuple = ()
     previous_prefix: np.ndarray = None
+    acceleration: np.ndarray = None
 
     def __post_init__(self):
         if int(self.agent_id) < 0 or int(self.cycle) < 0:
@@ -71,6 +72,8 @@ class AgentObservation:
             raise ValueError("invalid timestamp")
         object.__setattr__(self, "pose", _finite(self.pose, (2,)))
         object.__setattr__(self, "velocity", _finite(self.velocity, (2,)))
+        if self.acceleration is not None:
+            object.__setattr__(self, "acceleration", _finite(self.acceleration, (2,)))
         if self.previous_prefix is not None:
             object.__setattr__(self, "previous_prefix", _finite(self.previous_prefix))
 
@@ -84,6 +87,8 @@ class LocalPlan:
     visits: int
     candidate_id: int
     minco_feasible: bool = True
+    duration: float = 2.
+    pass_through: bool = False
 
     def __post_init__(self):
         object.__setattr__(self, "endpoint", _finite(self.endpoint, (2,)))

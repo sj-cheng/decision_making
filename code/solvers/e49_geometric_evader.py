@@ -4,13 +4,15 @@ import time
 import numpy as np
 from numba import njit
 from solvers.frozen_d_search_interface import PublicMap,move,route,safe,sensor_visible
+from l45_corner_shared_20261025.local_pursuit import graph
 
 ACTIONS=np.array([[x,y] for scale in (1.,.5) for x in (-scale,0.,scale) for y in (-scale,0.,scale)
                   if x!=0 or y!=0]+[[0.,0.]])
 
 
 @njit(cache=True)
-def escape_one(at,pursuers,active,boxes,vertices,pdist,edist,pursuer_speed,depth=4,width=8):
+def escape_one(at,pursuers,active,boxes,vertices,pdist,edist,pursuer_speed,depth=4,width=8,
+               evader_speed=1.):
     # State = evader xy, two pursuer xy; each pursuer conservatively chases
     # this target. Both actions are then applied simultaneously.
     states=np.zeros((width,6));states[0,:2]=at;states[0,2:]=pursuers.reshape(4)
@@ -25,8 +27,9 @@ def escape_one(at,pursuers,active,boxes,vertices,pdist,edist,pursuer_speed,depth
             q=states[k,:2];pp=states[k,2:].reshape(2,2);nextp=pp.copy()
             for i in range(2):
                 if active[i]:nextp[i]+=move(pp[i],q,pursuer_speed,vertices,pdist,boxes,count)
-            for action in ACTIONS:
-                if not safe(q,action,1.,boxes,count):continue
+            for direction in ACTIONS:
+                action=direction*evader_speed
+                if not safe(q,action,evader_speed,boxes,count):continue
                 nq=q+action;minimum=100.;geodesic=100.;hidden=True
                 # Keep the escape reference away from the simulator border.
                 # Without this guard the lookahead prefers an outward diagonal
@@ -36,7 +39,7 @@ def escape_one(at,pursuers,active,boxes,vertices,pdist,edist,pursuer_speed,depth
                 for i in range(2):
                     if active[i]:
                         minimum=min(minimum,np.sqrt(np.sum((nq-nextp[i])**2)))
-                        geodesic=min(geodesic,float(route(nextp[i],nq,1.,vertices,edist,boxes,count)[0]))
+                        geodesic=min(geodesic,float(route(nextp[i],nq,evader_speed,vertices,edist,boxes,count)[0]))
                         if sensor_visible(nextp[i],nq,boxes):hidden=False
                 survives=minimum>=1.
                 margin=min(minimum,10.)+.25*min(geodesic,20.)+(.4 if hidden else 0.)
@@ -58,16 +61,25 @@ def escape_one(at,pursuers,active,boxes,vertices,pdist,edist,pursuer_speed,depth
 
 class GeometricEvader:
     """RootPUCT-compatible environment-side interface; no pursuer policy access."""
-    def __init__(self,*args,**kwargs):self.public=None;self.records=[]
+    def __init__(self,*args,evader_speed=1.,predicted_pursuer_speed=None,**kwargs):
+        if not np.isfinite(evader_speed) or evader_speed <= 0:
+            raise ValueError('positive finite evader_speed required')
+        self.predicted_pursuer_speed = predicted_pursuer_speed
+        self.public=None;self.records=[];self.evader_speed=float(evader_speed)
     def seeded_state(self,problem,*args):return None
     def search(self,problem,state,turn=0):
-        if self.public is None:self.public=PublicMap(problem.obstacles,problem.current_pursuer_speed_lim)
+        if self.public is None:
+            speed = self.predicted_pursuer_speed
+            self.public=PublicMap(problem.obstacles, problem.current_pursuer_speed_lim if speed is None else speed)
+            if self.evader_speed != 1.:
+                self.public.edist=graph(self.public.vertices,self.public.boxes,self.evader_speed,
+                                        np.zeros(2,np.int64))
         start=time.perf_counter();p=self.public;out=np.zeros((2,2));ap=state[problem.active_idxs[2:],0]>.5
         for j in range(2):
             if state[problem.active_idxs[j],0]>.5:
                 out[j],score,predicted_safe=escape_one(state[2*j:2*j+2,0],state[4:8,0].reshape(2,2),ap,
-                    p.boxes,p.vertices,p.dist,p.edist,p.speed)
-                assert safe(state[2*j:2*j+2,0],out[j],1.,p.boxes,np.zeros(2,np.int64))
+                    p.boxes,p.vertices,p.dist,p.edist,p.speed,evader_speed=self.evader_speed)
+                assert safe(state[2*j:2*j+2,0],out[j],self.evader_speed,p.boxes,np.zeros(2,np.int64))
         self.records.append(dict(wall_ms=1000*(time.perf_counter()-start),depth=4,beam_width=8,
             full_state=True,predicted_pursuer='map-aware direct chase of this target; not actual L5',
             trained=False))

@@ -10,7 +10,8 @@ from dataclasses import dataclass, field
 from solvers.e50_interfaces import LidarScan, LocalMapSnapshot
 
 
-def _boxes_from_points(points, inflation=.12, max_boxes=24, merge_distance=.45):
+def _boxes_from_points(points, inflation=.12, max_boxes=24, merge_distance=.45,
+                       sensor_position=None):
     """Build conservative axis-aligned obstacle patches from hit points.
 
     A range scan is not a global obstacle list.  This conversion keeps only
@@ -35,23 +36,55 @@ def _boxes_from_points(points, inflation=.12, max_boxes=24, merge_distance=.45):
     remaining = set(range(len(points)))
     groups = []
     threshold = merge_distance + 2.0 * inflation
+    # Batch pairwise distances once; avoid O(N²) Python/numpy scalar calls.
+    adjacent = np.linalg.norm(points[:, None] - points[None, :], axis=2) <= threshold
     while remaining:
         seed = remaining.pop()
         group = [seed]
         frontier = [seed]
         while frontier:
             i = frontier.pop()
-            near = [j for j in remaining
-                    if float(np.linalg.norm(points[i] - points[j])) <= threshold]
+            near = [j for j in remaining if adjacent[i, j]]
             for j in near:
                 remaining.remove(j); frontier.append(j); group.append(j)
         groups.append(group)
 
+    pose = None if sensor_position is None else np.asarray(sensor_position, float)
+
     def patch(group):
-        low = points[group].min(axis=0) - inflation
-        high = points[group].max(axis=0) + inflation
+        measured_low = points[group].min(axis=0)
+        measured_high = points[group].max(axis=0)
+        low = measured_low - inflation
+        high = measured_high + inflation
+        if pose is not None and np.all(pose >= low) and np.all(pose <= high):
+            # Reduce padding only on the strongest separating axis, keeping all
+            # measured returns. A box enclosing ego even without padding is
+            # split below.
+            gap = np.maximum(measured_low - pose, pose - measured_high)
+            axis = int(np.argmax(gap))
+            if gap[axis] > 0.:
+                if pose[axis] < measured_low[axis]:
+                    low[axis] = (pose[axis] + measured_low[axis]) * .5
+                else:
+                    high[axis] = (pose[axis] + measured_high[axis]) * .5
         return np.column_stack((low, high))
 
+    # A connected cloud can wrap around the sensor. Split its AABB into
+    # directional patches so the bounding box does not fill the free space.
+    if pose is not None:
+        refined = []
+        for group in groups:
+            box = patch(group)
+            if np.all(pose >= box[:, 0]) and np.all(pose <= box[:, 1]):
+                delta = points[group] - pose
+                axis = np.argmax(np.abs(delta), axis=1)
+                side = (delta[np.arange(len(group)), axis] >= 0).astype(int)
+                labels = 2 * axis + side
+                for label in np.unique(labels):
+                    refined.append(np.asarray(group)[labels == label].tolist())
+            else:
+                refined.append(group)
+        groups = refined
     boxes = [patch(g) for g in groups]
     # E49 networks reserve 24 map tokens.  Merge the closest patches if a
     # dense scan would otherwise exceed that fixed capacity.
@@ -59,6 +92,17 @@ def _boxes_from_points(points, inflation=.12, max_boxes=24, merge_distance=.45):
         centers = np.asarray([(b[:, 0] + b[:, 1]) * .5 for b in boxes])
         dist = np.linalg.norm(centers[:, None] - centers[None, :], axis=2)
         dist[np.diag_indices_from(dist)] = np.inf
+        if pose is not None:
+            # Prefer capacity merges that do not close the measured free
+            # space around ego. If the capacity is too small to preserve it,
+            # retaining a conservative containing patch is safer than loss
+            # of real returns.
+            lows = np.minimum(np.asarray(boxes)[:, None, :, 0], np.asarray(boxes)[None, :, :, 0])
+            highs = np.maximum(np.asarray(boxes)[:, None, :, 1], np.asarray(boxes)[None, :, :, 1])
+            contains_pose = ((pose >= lows) & (pose <= highs)).all(axis=-1)
+            safe_dist = np.where(contains_pose, np.inf, dist)
+            if np.isfinite(safe_dist).any():
+                dist = safe_dist
         i, j = np.unravel_index(np.argmin(dist), dist.shape)
         low = np.minimum(boxes[i][:, 0], boxes[j][:, 0])
         high = np.maximum(boxes[i][:, 1], boxes[j][:, 1])
@@ -90,10 +134,10 @@ def scan_to_obstacle_boxes(sensor_position, scan: LidarScan, *, inflation=.12,
 
 
 def points_to_obstacle_boxes(points, *, inflation=.12, max_boxes=24,
-                             merge_distance=.45):
+                             merge_distance=.45, sensor_position=None):
     """Convert accumulated map-frame LiDAR hits into planner obstacle patches."""
     return _boxes_from_points(points, inflation=inflation, max_boxes=max_boxes,
-                              merge_distance=merge_distance)
+                              merge_distance=merge_distance, sensor_position=sensor_position)
 
 
 @dataclass
@@ -144,7 +188,7 @@ class LidarPlanningMap:
         now = float(scan.stamp if stamp is None else stamp)
         if not np.isfinite(now):
             raise ValueError('stamp must be finite')
-        valid = scan.ranges < scan.max_range - 1e-9
+        valid = (scan.ranges > 1e-9) & (scan.ranges < scan.max_range - 1e-9)
         if np.any(valid):
             points = sensor[None, :] + np.column_stack((np.cos(scan.angles[valid]),
                                                          np.sin(scan.angles[valid]))) \
@@ -160,17 +204,16 @@ class LidarPlanningMap:
             self._points, self._stamps = self._points[order], self._stamps[order]
 
     def obstacle_boxes(self):
-        boxes = points_to_obstacle_boxes(self._points, inflation=self.inflation,
-                                         max_boxes=self.max_boxes,
-                                         merge_distance=self.merge_distance)
-        if len(boxes) and self._has_sensor_position:
-            pose = self._sensor_position
-            # A local patch containing the current sensor is a self-hit (or a
-            # boundary-contact artefact), not a usable obstacle constraint.
-            contains_pose = np.all((pose[None, :] >= boxes[:, :, 0] - 1e-9) &
-                                   (pose[None, :] <= boxes[:, :, 1] + 1e-9), axis=1)
-            boxes = boxes[~contains_pose]
-        return boxes
+        points = self._points
+        pose = self._sensor_position if self._has_sensor_position else None
+        if pose is not None and len(points):
+            # Remove actual zero-range self returns, not the rectangular
+            # envelope of arbitrary distant measurements around the robot.
+            points = points[np.linalg.norm(points - pose, axis=1) > 1e-9]
+        return points_to_obstacle_boxes(points, inflation=self.inflation,
+                                        max_boxes=self.max_boxes,
+                                        merge_distance=self.merge_distance,
+                                        sensor_position=pose)
 
     def free_space_endpoints(self, max_distance=2., min_clearance=.4,
                              max_candidates=12):

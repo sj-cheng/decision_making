@@ -4,6 +4,60 @@ import numpy as np
 from solvers.e50_interfaces import quintic_coefficients, sample_quintic
 
 
+DEFAULT_MAX_ACCELERATION = 10.
+SHARED_SPEED_LIMIT = 1.5
+SHARED_ACCELERATION_LIMIT = 1.5
+
+
+def reachable_waypoint(position, waypoint, velocity, duration, max_speed, max_acceleration):
+    delta = np.asarray(waypoint) - position
+    length = float(np.linalg.norm(delta))
+    if length < 1e-9:
+        return position
+    direction = delta / length
+    forward = max(0., float(velocity @ direction))
+    radius = min(max_acceleration*duration**2*np.sqrt(3.)/10., max_speed*duration/1.875)
+    radius += .5*duration*forward
+    return position + min(length, radius*.96)*direction
+
+
+def stop_duration(velocity, acceleration, max_acceleration):
+    headroom = max(.2*max_acceleration, .95*max_acceleration - .5*np.linalg.norm(acceleration))
+    seconds = max(.14, 1.5*np.linalg.norm(velocity)/headroom)
+    return float(np.ceil(seconds/.02)*.02)
+
+
+def braking_waypoints(pose, velocity, acceleration, max_acceleration, horizon):
+    if max(np.linalg.norm(velocity), np.linalg.norm(acceleration)) < 1e-6:
+        return []
+    minimum = stop_duration(velocity, acceleration, max_acceleration)
+    times = [minimum, minimum+.06, max(.5, minimum+.12), max(1., minimum+.2)]
+    return [(pose+.5*t*velocity+t*t*acceleration/12., t) for t in times if t <= horizon]
+
+
+def validate_max_acceleration(value):
+    value = float(value)
+    if not np.isfinite(value) or value <= 0.:
+        raise ValueError('max acceleration must be positive and finite')
+    return value
+
+
+def _continuous_acceleration_peak(coefficients, duration):
+    # Acceleration is cubic in normalized time; extrema of its squared norm
+    # occur at endpoints or where acceleration dot its derivative is zero.
+    accel = coefficients[:, 2:] * [2., 6.*duration, 12.*duration**2, 20.*duration**3]
+    return _vector_polynomial_peak(accel)
+
+
+def _vector_polynomial_peak(components):
+    powers = np.arange(1, components.shape[1])
+    stationary = sum(np.convolve(row, row[1:]*powers) for row in components)
+    roots = np.polynomial.polynomial.polyroots(stationary)
+    interior = roots.real[(np.abs(roots.imag) < 1e-8) & (roots.real > 0.) & (roots.real < 1.)]
+    values = np.polynomial.polynomial.polyval(np.r_[0., 1., interior], components.T)
+    return float(np.max(np.linalg.norm(values, axis=0)))
+
+
 def _segment_safe(proxy, start, endpoint, samples=32):
     if proxy is None:
         return True
@@ -123,7 +177,7 @@ def single_agent_endpoints(start, particles, weights, proxy=None, *, duration=2.
 def evaluate_minco_endpoint(start, endpoint, *, duration=2., sample_dt=.02,
                             start_velocity=None, start_acceleration=None,
                             max_speed=np.inf, max_acceleration=np.inf,
-                            proxy=None, samples=None):
+                            proxy=None, samples=None, continuous_acceleration=False, continuous_speed=False, pass_through=False):
     """Compile one endpoint with the same quintic semantics used by E50.
 
     Returns a public score record suitable for a local MCTS value function.
@@ -137,12 +191,29 @@ def evaluate_minco_endpoint(start, endpoint, *, duration=2., sample_dt=.02,
     a0 = np.zeros(2) if start_acceleration is None else np.asarray(start_acceleration, dtype=float)
     if v0.shape != (2,) or a0.shape != (2,):
         raise ValueError('invalid initial derivatives')
+    goal_velocity = np.zeros(2)
+    if pass_through:
+        # With fixed position and zero terminal acceleration, integrated
+        # squared jerk is minimized when terminal snap vanishes. Project the
+        # resulting free terminal velocity onto the speed ball.
+        goal_velocity = (15.*(endpoint-start)/duration - 7.*v0 - duration*a0)/8.
+        norm = np.linalg.norm(goal_velocity)
+        if norm > max_speed:
+            goal_velocity *= max_speed/norm
     coeff = quintic_coefficients(start[None], endpoint[None], float(duration),
-                                 v0[None], np.zeros((1, 2)), a0[None], np.zeros((1, 2)))[0]
+                                 v0[None], goal_velocity[None], a0[None], np.zeros((1, 2)))[0]
     positions, velocities, accelerations = sample_quintic(coeff, float(duration), float(sample_dt))
     speed = float(np.max(np.linalg.norm(velocities, axis=1)))
     accel = float(np.max(np.linalg.norm(accelerations, axis=1)))
-    collision = False
+    if continuous_acceleration:
+        accel = max(accel, _continuous_acceleration_peak(coeff, float(duration)))
+    if continuous_speed:
+        # Every instant is within half a sample interval of a node. Only
+        # solve for velocity extrema if the acceleration bound allows a crossing.
+        acceleration_bound = accel if continuous_acceleration else _continuous_acceleration_peak(coeff, duration)
+        if speed + acceleration_bound*duration/(2*(len(positions)-1)) >= max_speed:
+            velocity_poly = coeff[:, 1:] * np.arange(1, 6) * duration**np.arange(5)
+            speed = max(speed, _vector_polynomial_peak(velocity_poly))
     collision = not _segment_safe(proxy, start, endpoint, samples=max(2, len(positions)))
     feasible = bool(speed <= float(max_speed) + 1e-9 and accel <= float(max_acceleration) + 1e-9
                     and not collision)

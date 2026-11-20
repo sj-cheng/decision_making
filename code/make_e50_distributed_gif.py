@@ -14,9 +14,15 @@ def render(log_path, case_path, output, fps=8):
     lo=min(min(p[0] for p in coords), -10.); hi=max(max(p[0] for p in coords), 10.)
     ly=min(min(p[1] for p in coords), -10.); hy=max(max(p[1] for p in coords), 10.)
     def xy(p): return (pad+(p[0]-lo)/(hi-lo)*(W-2*pad), W-pad-(p[1]-ly)/(hy-ly)*(W-2*pad))
-    frames=[]; paths=[[],[]]
+    initial=case['worlds'][0]['initial']
+    frames=[]; paths=[[initial[4:6]],[initial[6:8]]]; target_paths=[[initial[0:2]],[initial[2:4]]]
     for row in logs:
-        for i,p in enumerate(row.get('pursuers', [])): paths[i].append(p)
+        for i,p in enumerate(row.get('pursuers', [])):
+            executed=row.get('minco',{}).get(str(i),{}).get('executed_positions')
+            paths[i].extend(executed if executed else [p])
+        for i,p in enumerate(row.get('targets', [])):
+            executed=row.get('evader_minco',{}).get(str(i),{}).get('positions')
+            target_paths[i].extend(executed if executed else [p])
         im=Image.new('RGB',(W,W+42),'white'); d=ImageDraw.Draw(im)
         for b in boxes:
             a=xy([b[0][0],b[1][0]]); c=xy([b[0][1],b[1][1]])
@@ -25,6 +31,8 @@ def render(log_path, case_path, output, fps=8):
             if len(path)>1: d.line([xy(p) for p in path],fill=color,width=3)
         for i,p in enumerate(row.get('pursuers', [])):
             q=xy(p); d.ellipse((q[0]-7,q[1]-7,q[0]+7,q[1]+7),fill=[(35,95,190),(220,80,45)][i])
+        for path in target_paths:
+            if len(path)>1: d.line([xy(p) for p in path],fill=(30,160,70),width=2)
         for i,p in enumerate(row.get('targets', [])):
             q=xy(p); d.ellipse((q[0]-5,q[1]-5,q[0]+5,q[1]+5),fill=(30,160,70),outline=(0,80,0))
         title=f"cycle {row['cycle']}  captures {len(row.get('captures', []))}  collision {row.get('pursuer_collision', False)}"

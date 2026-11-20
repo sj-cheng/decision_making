@@ -183,7 +183,14 @@ def sample_quintic(coefficients, duration, dt):
     if c.shape[-2:] != (2, 6) or duration <= 0 or dt <= 0:
         raise ValueError("coefficients must have shape (..., 2, 6)")
     n = max(2, int(np.ceil(duration / dt)) + 1)
-    t = np.linspace(0., float(duration), n)
+    return sample_quintic_at(c, np.linspace(0., float(duration), n))
+
+
+def sample_quintic_at(coefficients, times):
+    """Evaluate the same quintic at times on the simulator clock."""
+    c = _array(coefficients)
+    t = _array(times).reshape(-1)
+    n = len(t)
     p = np.zeros((n,) + c.shape[:-1]); v = p.copy(); a = p.copy()
     for k in range(6):
         p += t.reshape((-1,) + (1,)*(c.ndim-1))**k * c[..., k]
