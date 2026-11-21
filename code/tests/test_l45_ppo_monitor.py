@@ -69,7 +69,7 @@ class L45PPOMonitorTests(unittest.TestCase):
     def test_default_and_relative_output_paths(self):
         cwd = monitor.CODE.parent
         self.assertEqual(monitor.runner_output(
-            ['/env/python', '-u', 'code/train_l45_ppo.py'], cwd), monitor.DEFAULT_OUTPUT)
+            ['/env/python', '-u', 'code/l45/train_l45_ppo.py'], cwd), monitor.DEFAULT_OUTPUT)
         self.assertEqual(monitor.runner_output(
             ['/env/python', str(monitor.RUNNER), '--output', 'relative/output'], cwd),
             (cwd / 'relative/output').resolve())

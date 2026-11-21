@@ -1,3 +1,5 @@
+import repo_paths
+repo_paths.install()
 
 
 import numpy as np 

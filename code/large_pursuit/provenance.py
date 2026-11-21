@@ -16,7 +16,7 @@ def sha(path):
 
 
 def sources():
-    paths=list((ROOT/'code/large_pursuit').glob('*.py'))+[ROOT/'code/run_large_pursuit.py',ROOT/'code/run_large_pursuit_full.py']
+    paths=list((ROOT/'code/large_pursuit').glob('*.py'))+[ROOT/'code/large_pursuit_exp/run_large_pursuit.py',ROOT/'code/large_pursuit_exp/run_large_pursuit_full.py']
     return {str(p.relative_to(ROOT)):sha(p) for p in sorted(paths)}
 
 

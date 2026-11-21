@@ -21,7 +21,7 @@ SERIAL_VALIDATION=canonical.validation
 
 def runtime_sources():
     paths=list((ROOT/'code/pursuit_parallel').glob('*.py'))+[
-        ROOT/'code/run_large_pursuit_parallel.py',ROOT/'code/tests/test_pursuit_parallel.py']
+        ROOT/'code/large_pursuit_exp/run_large_pursuit_parallel.py',ROOT/'code/tests/test_pursuit_parallel.py']
     return {str(p.relative_to(ROOT)):sha(p) for p in sorted(paths)}
 
 

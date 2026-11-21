@@ -55,7 +55,7 @@ For the obstacle-map benchmark with V7 models, updated MAPPO, 80 CPU workers,
 and resumable episode chunks, run from the repository root:
 
 ```bash
-bash code/run_benchmark_obstacles.sh --workers 80
+bash code/benchmarks/run_benchmark_obstacles.sh --workers 80
 ```
 
 Use `OBSTACLE_LAYOUT=four` for four obstacles (default: two). Full commands,
@@ -63,7 +63,7 @@ protocol details, and smoke checks are in
 [`文档/实验协议/BENCHMARK_OBSTACLES.md`](文档/实验协议/BENCHMARK_OBSTACLES.md).
 
 The reproducible first-stage benchmark is implemented in
-`code/benchmark_baselines.py`. It evaluates Random, Greedy, Policy Only,
+`code/benchmarks/benchmark_baselines.py`. It evaluates Random, Greedy, Policy Only,
 Search Only, Search + Learning, MAPPO and Large-budget MCTS against fixed
 strong opponents, and writes both per-episode CSV files and summary files.
 The benchmark keeps the current Example8 global/no-obstacle protocol: direct
@@ -198,8 +198,8 @@ follow from the experiment.
 The obstacle/local-observation pipeline is documented in
 [`文档/实验协议/SEARCH_RL.md`](文档/实验协议/SEARCH_RL.md). It adds anonymous team belief tracking,
 root-sampled search, search distillation and PPO fine-tuning with independent
-evaluation maps and resumable training. Build with `python code/build_local_rl.py`,
-then launch `python -u code/run_search_rl_pipeline.py --workers 16`.
+evaluation maps and resumable training. Build with `python code/l45/build_local_rl.py`,
+then launch `python -u code/search_rl/run_search_rl_pipeline.py --workers 16`.
 Outputs and progress are under `current/search_rl_v1/`; formal multi-seed runs
 are gated by the pilot comparison. The new swept-collision protocol is opt-in.
 

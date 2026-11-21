@@ -10,7 +10,7 @@ def acceptance_sources():
     result=sources()
     for relative in ('code/tests/test_large_pursuit.py','code/tests/test_large_pursuit_semantics.py',
                      'code/tests/fixtures/large_pursuit_rare_negative.json',
-                     'code/verify_large_pursuit.py','code/verify_large_pursuit_repair.py'):
+                     'code/large_pursuit_exp/verify_large_pursuit.py','code/large_pursuit_exp/verify_large_pursuit_repair.py'):
         path=ROOT/relative
         if path.exists():result[relative]=sha(path)
     return result
