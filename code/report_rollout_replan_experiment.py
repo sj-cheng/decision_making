@@ -120,14 +120,14 @@ def main():
         f'- 停止此修改方向：{decision["stop_modification_direction"]}。不继续自动增加深度、奖励、价值网络、PPO或其他模块。',
         '- D与原始G/T/T+Geo及历史数据保持冻结，强G基线保留；无神经网络训练、无教师生成、无部署修改。','',
         '## 数据与源码','',
-        '- [结果前方案](../../code/L45_ROLLOUT_REPLAN_20261026.md)、[冻结源码和配置](experiment.json)、[新确认银行](bank_frozen.json)、[几何验收](bank_acceptance.json)。',
+        '- [结果前方案](../../../文档/实验协议/L45_ROLLOUT_REPLAN_20261026.md)、[冻结源码和配置](experiment.json)、[新确认银行](bank_frozen.json)、[几何验收](bank_acceptance.json)。',
         '- [工程门槛](preflight.json)、[开发120局](development/results.json)、[开发统计](development/statistics.json)、[确认240局](confirmation/results.json)、[确认统计](confirmation/statistics.json)。',
         '- [开发逐帧复核](development/postrun_audit.json)、[确认逐帧复核](confirmation/postrun_audit.json)、[最终决定](decision.json)、[失败清单](failure_cases.json)。',
-        '- [独立研究solver](../../code/solvers/rollout_replan.py)、[共用实验执行器](../../code/run_rollout_replan_experiment.py)。','']
+        '- [独立研究solver](../../../code/solvers/rollout_replan.py)、[共用实验执行器](../../../code/run_rollout_replan_experiment.py)。','']
     if (OUT/'execution_revision.json').exists():
-        lines+=['- [本轮精确几何执行实现](../../code/solvers/rollout_geometry_exact.py)、[本轮实际启动器](../../code/launch_rollout_replan_exact.py)。','']
+        lines+=['- [本轮精确几何执行实现](../../../code/solvers/rollout_geometry_exact.py)、[本轮实际启动器](../../../code/launch_rollout_replan_exact.py)。','']
     else:
-        lines+=['- [初版预热启动器](../../code/launch_rollout_replan.py)。','']
+        lines+=['- [初版预热启动器](../../../code/launch_rollout_replan.py)。','']
     if (OUT/'execution_revision.json').exists():
         insertion=['## 精确执行版本与初版记录','',
             '初版逐次直算几何在开发完成62/120局后暴露根访问不足；已完成数据全部保留，开发未完成、确认未运行，不对该部分样本作确认推断。',
@@ -135,7 +135,7 @@ def main():
             '198个地图/位置检查的候选数组及动作逐字节相同，固定64完成模拟的动作、RNG、根访问/回报及轨迹精确一致；这是一项执行复用，不是另一种控制策略。',
             '同一策略在真实200ms中可完成更多模拟，因此计算速度会影响实践结果。本目录重做了全部工程、120局开发和240局确认，没有把初版部分数据混入统计。',
             '新确认银行在初版前已经冻结，执行复用前没有运行任何确认对局，故沿用该银行而不重新选例。',
-            '见[精确执行登记](../../code/L45_ROLLOUT_REPLAN_EXACT_EXECUTION_20261026.md)、[执行源码散列](execution_revision.json)、[初版记录](../l45_rollout_replan_20261026/REPORT.md)。','']
+            '见[精确执行登记](../../../文档/实验协议/L45_ROLLOUT_REPLAN_EXACT_EXECUTION_20261026.md)、[执行源码散列](execution_revision.json)、[初版记录](../l45_rollout_replan_20261026/REPORT.md)。','']
         offset=lines.index('## 先完成工程验收')
         lines=lines[:offset]+insertion+lines[offset:]
         lines=[line.replace('冻结前草稿配置保留在before_test_stub_correction_experiment.json。','冻结前草稿配置保留在初版目录的before_test_stub_correction_experiment.json。') for line in lines]

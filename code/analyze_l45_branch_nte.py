@@ -117,5 +117,5 @@ def plot(output,results):
 
 
 if __name__=='__main__':
-    parser=argparse.ArgumentParser();parser.add_argument('--output',type=Path,default=run.ROOT/'current/l45_branch_nte_corrected_20261025');args=parser.parse_args()
+    parser=argparse.ArgumentParser();parser.add_argument('--output',type=Path,default=run.ROOT/'current/L系列实验输出/l45_branch_nte_corrected_20261025');args=parser.parse_args()
     print(json.dumps(analyze(args.output.resolve()),ensure_ascii=False,indent=2))

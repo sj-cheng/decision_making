@@ -115,7 +115,7 @@ def analyze(root):
 
 
 def main():
-    p=argparse.ArgumentParser();p.add_argument('--output',type=Path,default=ROOT/'current/e45k_main_task_learning_20261031')
+    p=argparse.ArgumentParser();p.add_argument('--output',type=Path,default=ROOT/'current/E系列实验输出/e45k_main_task_learning_20261031')
     p.add_argument('--watch',action='store_true');args=p.parse_args();started=time.monotonic()
     while True:
         stage=analyze(args.output)

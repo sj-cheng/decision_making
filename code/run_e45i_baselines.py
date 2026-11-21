@@ -29,8 +29,8 @@ import run_e45b_role_free as base
 import run_e45f_generalization_benchmark as reference
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT/'current/e45i_official_baselines_20261031'
-CROOT = ROOT/'current/e45c_budget_scaling_20261028'
+OUT = ROOT/'current/E系列实验输出/e45i_official_baselines_20261031'
+CROOT = ROOT/'current/E系列实验输出/e45c_budget_scaling_20261028'
 BASE_SEED = 946120261031
 SEEDS = (17, 29, 43)
 RL = ('RMAPPO', 'MAPPO_APF')
@@ -121,7 +121,7 @@ def prepare(steps=100_000, smoke=False):
     train = [e for e in source if e['split']=='train']
     validation = [e for e in source if e['split']=='validation']
     known = set()
-    for directory in ROOT.glob('current/e45*/bank'):
+    for directory in ROOT.glob('current/E系列实验输出/e45*/bank'):
         for path in directory.glob('*/*.json'):
             packet = read(path)
             if 'map' in packet:
@@ -189,7 +189,7 @@ def prepare(steps=100_000, smoke=False):
     for name in SOURCES:
         dest = OUT/'source_snapshot'/name;dest.parent.mkdir(parents=True,exist_ok=True)
         dest.write_bytes((ROOT/'code'/name).read_bytes())
-    (OUT/'PROTOCOL.md').write_bytes((ROOT/'code/E45I_BASELINES_PROTOCOL_20261031.md').read_bytes())
+    (OUT/'PROTOCOL.md').write_bytes((ROOT/'文档/实验协议/E45I_BASELINES_PROTOCOL_20261031.md').read_bytes())
     emit(OUT,'registered',training_runs=6,steps_per_run=steps,test_groups=len(test),formal_tasks=config['formal_tasks'])
     return config
 

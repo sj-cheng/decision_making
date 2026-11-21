@@ -13,7 +13,7 @@ def main():
     manifest=json.loads((SOURCE/'DELIVERY_SHA256.json').read_text())
     # Chronological user-facing summaries now include the later experiment.
     historic={p:h for p,h in manifest['files'].items() if p not in [str(ROOT/'README.md'),
-        str(ROOT/'code/L45_RESEARCH_DIRECTIONS_20261025.md'),str(ROOT/'Git提交后实验完整汇总_20261025.md')]}
+        str(ROOT/'文档/实验协议/L45_RESEARCH_DIRECTIONS_20261025.md'),str(ROOT/'Git提交后实验完整汇总_20261025.md')]}
     assert all(sha(p)==h for p,h in historic.items())
     repeats=json.loads((OUT/'repeat_results.json').read_text())
     contrasts=json.loads((OUT/'repeat_comparisons.json').read_text())

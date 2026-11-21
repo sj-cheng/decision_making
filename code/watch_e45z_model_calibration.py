@@ -3,7 +3,7 @@ from pathlib import Path
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-P=Path('/data2/sjc/decision_making/current/e45z_model_calibration_20261104')
+P=Path('/data2/sjc/decision_making/current/E系列实验输出/e45z_model_calibration_20261104')
 
 
 def main():

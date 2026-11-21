@@ -26,8 +26,8 @@ from solvers.e45b_joint_nte import Controller
 from run_e44_parallel import choose_cpus
 
 ROOT=Path(__file__).resolve().parents[1]
-SOURCE=ROOT/'current/e45c_budget_scaling_20261028'
-OUT=ROOT/'current/e45e_value_off_20261029'
+SOURCE=ROOT/'current/E系列实验输出/e45c_budget_scaling_20261028'
+OUT=ROOT/'current/E系列实验输出/e45e_value_off_20261029'
 SEEDS=(17,29,43)
 ARMS=('SINGLE_PRIOR','FACT_PRIOR','JOINT_PRIOR')
 NEW_ARMS=ARMS[:2]
@@ -139,7 +139,7 @@ def prepare():
         source_hashes={str(ROOT/'code'/p):sha(ROOT/'code'/p) for p in SOURCES},protected_hashes=protected,
         bank_hashes={e['path']:sha(e['path']) for e in entries}|{str(OUT/'bank/manifest.json'):sha(OUT/'bank/manifest.json')},validation_entries=validation)
     save(OUT/'experiment.json',config)
-    (OUT/'PROTOCOL.md').write_bytes((ROOT/'code/E45E_VALUE_OFF_PROTOCOL_20261029.md').read_bytes())
+    (OUT/'PROTOCOL.md').write_bytes((ROOT/'文档/实验协议/E45E_VALUE_OFF_PROTOCOL_20261029.md').read_bytes())
     for p in SOURCES:
         target=OUT/'source_snapshot'/p;target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes((ROOT/'code'/p).read_bytes())
     return config

@@ -10,7 +10,7 @@ from run_frozen_d_closed_loop import ROOT,OUT as SOURCE,OLD,save,sha,legal_actio
 from solvers.frozen_d_search_interface import (Controller,Observation,belief_view,
     root_sample,target_step,sensor_visible,geometric_candidates,COMPASS,route,safe)
 
-OUT=ROOT/'current/l45_search_diagnosis_repeat_20261026'
+OUT=ROOT/'current/L系列实验输出/l45_search_diagnosis_repeat_20261026'
 
 
 def obs(item):

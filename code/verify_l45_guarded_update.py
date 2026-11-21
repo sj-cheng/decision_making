@@ -18,7 +18,7 @@ from learning.kl_guard import accepted_actor_step
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source', type=Path, default=s.DEFAULT_OUTPUT)
-    parser.add_argument('--output', type=Path, default=s.ROOT/'current/l45_completion_search_20261023/review/guarded_update.json')
+    parser.add_argument('--output', type=Path, default=s.ROOT/'current/L系列实验输出/l45_completion_search_20261023/review/guarded_update.json')
     args = parser.parse_args(argv)
     args.source = args.source.resolve()
     torch.set_num_threads(1)

@@ -18,7 +18,7 @@ from learning.e46_geometry_teacher import (MixedController,RankNetwork,RankRunti
 def packet(tmp_path_factory):
     out=tmp_path_factory.mktemp('e46_integration')
     run.configure(out)
-    cfg=run.read(run.ROOT/'current/e45w_joint_ppo_and_planning_20261103/experiment.json')
+    cfg=run.read(run.ROOT/'current/E系列实验输出/e45w_joint_ppo_and_planning_20261103/experiment.json')
     case=run.read(cfg['validation_entries'][0]['path'])
     return dict(id='acceptance',group='acceptance',map=case['map'],speed=case['speed'],
                 records=case['history'],seed=146261105,phase='hidden')

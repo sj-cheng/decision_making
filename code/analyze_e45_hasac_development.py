@@ -9,9 +9,9 @@ from pathlib import Path
 import time
 
 ROOT=Path(__file__).resolve().parents[1]
-OUT=ROOT/'current/e45_hasac_development_review_20261101'
-SOURCES=[('M_from_scratch',ROOT/'current/e45m_hasac_task_20261101'),
-         ('N_curriculum',ROOT/'current/e45n_hasac_curriculum_20261101')]
+OUT=ROOT/'current/E系列实验输出/e45_hasac_development_review_20261101'
+SOURCES=[('M_from_scratch',ROOT/'current/E系列实验输出/e45m_hasac_task_20261101'),
+         ('N_curriculum',ROOT/'current/E系列实验输出/e45n_hasac_curriculum_20261101')]
 
 
 def read(p):return json.loads(p.read_text())

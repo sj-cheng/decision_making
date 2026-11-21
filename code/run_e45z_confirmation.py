@@ -26,7 +26,7 @@ from corner_estimator_scenarios import original_model
 from solvers.e45_team_adapter import public_observation
 from solvers.root_audit_puct import RootPUCT
 
-ROOT=x.ROOT;OUT=ROOT/'current/e45z_independent_confirmation_20261104'
+ROOT=x.ROOT;OUT=ROOT/'current/E系列实验输出/e45z_independent_confirmation_20261104'
 CFG=None;ACTOR=None;CACHE={}
 CPUS=list(range(48,56))+list(range(56,80))
 NAMESPACE='Z-confirm-independent-long-reference-v1'
@@ -235,7 +235,7 @@ def register(output,smoke):
         assert len(maps)==6
         assert all(sum(r['family']==family for r in maps)==2 for family in ('long_wall','wall_corner','multi_route'))
     paths=[Path(__file__),ROOT/'code/tests/test_e45z_confirmation.py',ROOT/'code/watch_e45z_confirmation.py',
-        ROOT/'code/E45Z_CONFIRMATION_PROTOCOL_20261104.md']
+        ROOT/'文档/实验协议/E45Z_CONFIRMATION_PROTOCOL_20261104.md']
     cfg=dict(name='E45-Z-confirm',smoke=smoke,source_maps=maps,warmup_map=training,
         actor_path=previous['actor_path'],actor_sha256=previous['actor_sha256'],
         source_hashes=old_z['source_hashes']|{str(p):x.sha(p) for p in paths},

@@ -5,7 +5,7 @@ from pathlib import Path
 import re
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT/'current/l45_candidate_prior_train_20261026'
+OUT = ROOT/'current/L系列实验输出/l45_candidate_prior_train_20261026'
 
 
 def sha(p):
@@ -32,7 +32,7 @@ def main():
     checks['no_recorded_engineering_failures'] = all(r['failure'] is None for r in rows)
     audit = json.loads((OUT/'evaluation/postrun_audit_v2.json').read_text())
     checks['complete_independent_audit'] = audit['passed'] and audit['episodes'] == 108 and not audit['errors']
-    old_audit = json.loads((ROOT/'current/l45_search_value_20261026/corrective_audit_registration.json').read_text())
+    old_audit = json.loads((ROOT/'current/L系列实验输出/l45_search_value_20261026/corrective_audit_registration.json').read_text())
     audit_name = str(ROOT/'code/audit_search_value_validation_v2.py')
     checks['auditor_matches_original_prior_registration'] = sha(audit_name) == old_audit['source_hashes'][audit_name]
     training = json.loads((OUT/'training.json').read_text())['records']

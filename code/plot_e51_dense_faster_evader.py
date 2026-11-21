@@ -11,7 +11,7 @@ from matplotlib.lines import Line2D
 import plot_e48_dense_obstacles as plot
 
 ROOT=Path(__file__).resolve().parents[1]
-OUT=ROOT/'current/e51_dense_faster_evader_20261107'
+OUT=ROOT/'current/E系列实验输出/e51_dense_faster_evader_20261107'
 NAMES=dict(A3='L5 + search',R2='Single PRIOR + search',A2='Same-pool geometry + search',
     A4='Geometry direct',A5='L5 direct',AG='Assigned geometry (AG)',GIT='Git d47d188 search + learning')
 

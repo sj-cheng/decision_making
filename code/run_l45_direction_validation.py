@@ -22,8 +22,8 @@ torch.set_num_threads(1)
 old,o=parent.old,parent.o
 ROOT,CODE=o.ROOT,o.CODE
 SOURCE=parent.DEFAULT_OUTPUT
-DEFAULT_OUTPUT=ROOT/'current/l45_direction_validation_20261024'
-SMOKE_OUTPUT=ROOT/'current/l45_direction_validation_smoke_20261024'
+DEFAULT_OUTPUT=ROOT/'current/L系列实验输出/l45_direction_validation_20261024'
+SMOKE_OUTPUT=ROOT/'current/L系列实验输出/l45_direction_validation_smoke_20261024'
 UIDS=('B','S','F','G')
 OPPONENTS=tuple(o.OPPONENTS)
 lock_json,locked_read=parent.lock_json,parent.locked_read
@@ -158,7 +158,7 @@ def prepare(args):
         ignore_map_for_physical_dedup=True,unseen_maps_checked=True,history_files={str(p):o.sha(p) for p in paths},
         scope='all recoverable scenario/case/bank JSON plus l45 rollout specs; archives and unused banks included'))
     sources[str(SOURCE/'experiment.json')]=o.sha(SOURCE/'experiment.json')
-    sources[str(ROOT/'current/l45_amplitude_match_20261024/results.json')]=o.sha(ROOT/'current/l45_amplitude_match_20261024/results.json')
+    sources[str(ROOT/'current/L系列实验输出/l45_amplitude_match_20261024/results.json')]=o.sha(ROOT/'current/L系列实验输出/l45_amplitude_match_20261024/results.json')
     lock_json(out/'experiment.json',dict(config=config(args),implementation=fingerprints(),models=reg,sources=sources))
     shutil.copyfile(CODE/'L45_DIRECTION_VALIDATION.md',out/'PLAN.md')
     runtime=out/'runtime';runtime.mkdir(exist_ok=True)

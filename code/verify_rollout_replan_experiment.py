@@ -3,8 +3,8 @@ import json,re,hashlib,fcntl,shutil
 from pathlib import Path
 from run_rollout_replan_experiment import ROOT,SOURCE,save,sha,loader
 
-OUT=ROOT/'current/l45_rollout_replan_exact_20261026'
-SLOW=ROOT/'current/l45_rollout_replan_20261026'
+OUT=ROOT/'current/L系列实验输出/l45_rollout_replan_exact_20261026'
+SLOW=ROOT/'current/L系列实验输出/l45_rollout_replan_20261026'
 
 
 def main():
@@ -32,7 +32,7 @@ def main():
     assert json.loads((OUT/'preflight.json').read_text())['passed']
     assert json.loads((OUT/'unit_tests.json').read_text())['passed']
     prior=json.loads((SOURCE/'DELIVERY_SHA256.json').read_text())
-    exclude={str(ROOT/'README.md'),str(ROOT/'code/L45_RESEARCH_DIRECTIONS_20261025.md'),str(ROOT/'Git提交后实验完整汇总_20261025.md')}
+    exclude={str(ROOT/'README.md'),str(ROOT/'文档/实验协议/L45_RESEARCH_DIRECTIONS_20261025.md'),str(ROOT/'Git提交后实验完整汇总_20261025.md')}
     preserved={p:h for p,h in prior['files'].items() if p not in exclude}
     assert all(sha(p)==h for p,h in preserved.items())
     assert loader.verify()
@@ -56,7 +56,7 @@ def main():
     files=[p for directory in (OUT,SLOW) for p in directory.rglob('*') if p.is_file() and p.name!='DELIVERY_SHA256.json']
     files += [Path(p) for p in sources]
     files += [ROOT/'code'/n for n in ('analyze_rollout_replan_experiment.py','report_rollout_replan_experiment.py','verify_rollout_replan_experiment.py')]
-    files += [ROOT/'README.md',ROOT/'code/L45_RESEARCH_DIRECTIONS_20261025.md',ROOT/'Git提交后实验完整汇总_20261025.md']
+    files += [ROOT/'README.md',ROOT/'文档/实验协议/L45_RESEARCH_DIRECTIONS_20261025.md',ROOT/'Git提交后实验完整汇总_20261025.md']
     manifest={str(p.resolve()):sha(p) for p in files}
     save(OUT/'DELIVERY_SHA256.json',dict(files=manifest,count=len(manifest)))
     assert all(sha(p)==h for p,h in manifest.items())

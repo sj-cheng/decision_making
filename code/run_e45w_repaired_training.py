@@ -30,7 +30,7 @@ from run_e45w_joint_training import (read, write, tensor_hash, TrainingAudit,
     SeedStreamEnv, _evaluate_job, score, preserve_rng, FORMAL_N_ENVS, FORMAL_N_STEPS)
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / 'current/e45w_joint_ppo_and_planning_20261103'
+OUT = ROOT / 'current/E系列实验输出/e45w_joint_ppo_and_planning_20261103'
 BLOCK = FORMAL_N_ENVS * FORMAL_N_STEPS
 CAP = BLOCK * original.FORMAL_ROLLOUTS
 

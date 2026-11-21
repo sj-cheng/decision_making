@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 @pytest.fixture(scope="module")
 def path():
-    config = json.loads((ROOT / "current/e45m_hasac_task_20261101/experiment.json").read_text())
+    config = json.loads((ROOT / "current/E系列实验输出/e45m_hasac_task_20261101/experiment.json").read_text())
     return config["entries"][0]["path"]
 
 

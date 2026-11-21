@@ -31,8 +31,8 @@ from torch.distributions import Normal, kl_divergence
 o, f, previous = v.o, v.followup, v.previous
 ROOT = o.ROOT
 SOURCE = b.DEFAULT_OUTPUT
-DEFAULT_OUTPUT = ROOT / 'current/l45_guarded_supervision_20261023'
-SMOKE_OUTPUT = ROOT / 'current/l45_guarded_supervision_smoke_20261023'
+DEFAULT_OUTPUT = ROOT / 'current/L系列实验输出/l45_guarded_supervision_20261023'
+SMOKE_OUTPUT = ROOT / 'current/L系列实验输出/l45_guarded_supervision_smoke_20261023'
 ARMS, SEEDS = ('S',), (0,)
 CONTROL, BASELINE = 'old0:novalue', 'baseline:novalue'
 SPLITS = dict(validation_four=('four', 100), validation_none=('none', 50),
@@ -151,7 +151,7 @@ def prepare(args):
     lock_json(out / 'scenario_independence.json', dict(
         previous_physical_scenes=historical_count, new_scenes=len(used)-historical_count,
         overlap=0, history_files=len(files), single_arm_single_seed=True,
-        scope='All recoverable current/l45*/**/scenarios.json and **/rollouts/*.json, including smoke, startup archives and actual rollouts; not all NTE pretraining states.'))
+        scope='All recoverable current/L系列实验输出/l45*/**/scenarios.json and **/rollouts/*.json, including smoke, startup archives and actual rollouts; not all NTE pretraining states.'))
     verify(args)
     return banks
 
@@ -1073,7 +1073,7 @@ def parse_args(argv=None):
     if args.smoke and args.output == DEFAULT_OUTPUT.resolve():
         parser.error('Smoke requires an isolated output')
     for source in (SOURCE, v.DEFAULT_OUTPUT, v.SOURCE, f.SOURCE, f.FINAL_SOURCE, o.SOURCE_MODELS, parent.DEFAULT_OUTPUT, parent.SMOKE_OUTPUT,
-                   ROOT / 'current/l45_completion_search_20261023'):
+                   ROOT / 'current/L系列实验输出/l45_completion_search_20261023'):
         source = source.resolve()
         if args.output == source or args.output.is_relative_to(source) or source.is_relative_to(args.output):
             parser.error('Output overlaps protected historical data')
@@ -1277,7 +1277,7 @@ _historical_source_record = source_record
 
 def source_record():
     record = _historical_source_record()
-    latest = ROOT/'current/l45_completion_search_20261023'
+    latest = ROOT/'current/L系列实验输出/l45_completion_search_20261023'
     rec = locked_read(latest/'recommended.json')
     if rec['uid'] != 'R0' or rec['smoke'] or rec['pursuer_settings']['completion_bonus'] != 0. or \
             rec['model_hash'] != record['recommendation']['model_hash']:
@@ -1468,7 +1468,7 @@ def report(args, result):
     (args.output/'REPORT.md').write_text('\n'.join(lines)+'\n')
     if not args.smoke:
         for path in (ROOT/'current/search_rl_diagnosis_20261022/REPORT.md',
-                     ROOT/'current/l45_completion_search_20261023/REPORT.md'):
+                     ROOT/'current/L系列实验输出/l45_completion_search_20261023/REPORT.md'):
             marker = str(args.output/'REPORT.md')
             if marker not in path.read_text():
                 with path.open('a') as stream:

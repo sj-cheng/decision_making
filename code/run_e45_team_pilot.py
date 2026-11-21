@@ -20,8 +20,8 @@ from prepare_l45_occlusion_scenarios import transform
 from run_e44_parallel import choose_cpus
 
 ROOT=Path(__file__).resolve().parents[1]
-OUT=ROOT/'current/e45_2v2_pilot_20261027'
-E44=ROOT/'current/e44_branch_conditioned_nte_20261027'
+OUT=ROOT/'current/E系列实验输出/e45_2v2_pilot_20261027'
+E44=ROOT/'current/E系列实验输出/e44_branch_conditioned_nte_20261027'
 METHODS=('IG','AG','AFN17','AFN29','AFN43')
 OPPONENTS=('fixed_D_kernel','rootpuct')
 BASE_SEED=94520261027
@@ -100,7 +100,7 @@ def prepare():
         no_performance_gate=True,source_hashes={str(p):sha(p) for p in files},protected_hashes=protected,
         bank_hashes={str(p):sha(p) for p in (OUT/'bank').glob('*.json')})
     save(OUT/'experiment.json',config)
-    (OUT/'PROTOCOL.md').write_bytes((ROOT/'code/E45_TEAM_PROTOCOL_20261027.md').read_bytes())
+    (OUT/'PROTOCOL.md').write_bytes((ROOT/'文档/实验协议/E45_TEAM_PROTOCOL_20261027.md').read_bytes())
     for p in files:
         q=OUT/'source_snapshot'/p.name;q.parent.mkdir(exist_ok=True);q.write_bytes(p.read_bytes())
     emit(stage='registered',episodes=120)

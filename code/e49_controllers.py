@@ -33,13 +33,13 @@ def method_specs():
         for seed in (SEEDS if arm in learned else (17,)):
             spec=dict(name=f'{arm}_{seed}' if arm in learned else arm,arm=arm,train_seed=seed)
             if arm in ('A3','A5'):
-                spec['checkpoint']=str(ROOT/f'current/e46_geometry_teacher_20261105/training/L5_{seed}_base/selected.npz')
+                spec['checkpoint']=str(ROOT/f'current/E系列实验输出/e46_geometry_teacher_20261105/training/L5_{seed}_base/selected.npz')
             elif arm=='SINGLE_PRIOR':
-                spec['checkpoint']=str(ROOT/f'current/e45c_budget_scaling_20261028/learning/x20/round_12/models/single_{seed}.npz')
+                spec['checkpoint']=str(ROOT/f'current/E系列实验输出/e45c_budget_scaling_20261028/learning/x20/round_12/models/single_{seed}.npz')
             elif arm=='PPO_C':
-                spec['checkpoint']=str(ROOT/f'current/e45w_joint_ppo_and_planning_20261103/training/C_{seed}/selected_actor.pt')
+                spec['checkpoint']=str(ROOT/f'current/E系列实验输出/e45w_joint_ppo_and_planning_20261103/training/C_{seed}/selected_actor.pt')
             elif arm=='MAPPO_RouteAPF':
-                selected=ROOT/f'current/e45j_repaired_benchmark_20261031/learning/MAPPO_APF_{seed}/selected.json'
+                selected=ROOT/f'current/E系列实验输出/e45j_repaired_benchmark_20261031/learning/MAPPO_APF_{seed}/selected.json'
                 spec['checkpoint']=json.loads(selected.read_text())['checkpoint']
             result.append(spec)
     return result

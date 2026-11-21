@@ -19,7 +19,7 @@ from solvers.e45b_joint_nte import simultaneous_capture
 from run_frozen_d_closed_loop import save,sha
 
 ROOT=Path(__file__).resolve().parents[1]
-OUT=ROOT/'current/e45i_code_audit_20261031/positive_control'
+OUT=ROOT/'current/E系列实验输出/e45i_code_audit_20261031/positive_control'
 BOXES=np.zeros((0,2,2));SPEED=1.1;HORIZON=20
 
 

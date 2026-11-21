@@ -22,8 +22,8 @@ from learning import deployment_scorer as scorer
 
 o,h,s=r.o,r.h,r.s
 ROOT,CODE=o.ROOT,o.CODE
-DEFAULT=ROOT/'current/l45_deployment_consistency_20261024'
-SMOKE=ROOT/'current/l45_deployment_consistency_smoke_20261024'
+DEFAULT=ROOT/'current/L系列实验输出/l45_deployment_consistency_20261024'
+SMOKE=ROOT/'current/L系列实验输出/l45_deployment_consistency_smoke_20261024'
 SOURCE=r.DEFAULT
 lock_json,read_locked=r.lock_json,r.locked_read
 

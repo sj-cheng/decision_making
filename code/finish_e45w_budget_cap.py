@@ -23,7 +23,7 @@ from stable_baselines3.common.save_util import load_from_zip_file
 import run_e45w_joint_training as train
 from learning.e45w_support_recovery import install,REVISION
 
-ROOT=train.ROOT;OUT=ROOT/'current/e45w_joint_ppo_and_planning_20261103'
+ROOT=train.ROOT;OUT=ROOT/'current/E系列实验输出/e45w_joint_ppo_and_planning_20261103'
 STATE=OUT/'repair_coordinator';DEST=OUT/'repaired_training/B_29_finalize1'
 BLOCK=train.FORMAL_N_ENVS*train.FORMAL_N_STEPS;CAP=BLOCK*train.FORMAL_ROLLOUTS
 ACTORS={}
@@ -140,7 +140,7 @@ def main(args):
     archive=STATE/'cap_failure_before_finalization_20261105';archive.mkdir(exist_ok=False)
     for name in ('registry.json','progress.json'):shutil.copy2(STATE/name,archive/name)
     sources={str(p):train.sha(p) for p in [Path(__file__),ROOT/'code/tests/test_e45w_budget_cap.py',
-        ROOT/'code/E45W_BUDGET_CAP_FINALIZATION_20261105.md']}
+        ROOT/'文档/实验协议/E45W_BUDGET_CAP_FINALIZATION_20261105.md']}
     train.write(archive/'new_source_manifest.json',dict(files=sources,no_scientific_recipe_change=True))
     manifest=train.read(train.MANIFEST);train.validate_manifest(manifest)
     def integrity():

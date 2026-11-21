@@ -12,7 +12,7 @@ from run_e52_train_nar_nae import initial_id
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_PRODUCTION_DIR = ROOT / 'current/e52_combined_20261118/production_parallel_v3'
+DEFAULT_PRODUCTION_DIR = ROOT / 'current/E系列实验输出/e52_combined_20261118/production_parallel_v3'
 SCENES = ('wall', 'corner', 'sparse')
 CASES_PER_SCENE = 3
 

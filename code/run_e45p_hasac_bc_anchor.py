@@ -21,7 +21,7 @@ from learning.e45o_demonstration_replay import DemonstrationReplay
 from learning.e45p_actor_supervision import public_teacher,initialize_bc_std,bc_step,install_anchor,fit_metrics
 j=o.j
 ROOT=o.ROOT
-OUT=ROOT/'current/e45p_hasac_bc_anchor_20261101'
+OUT=ROOT/'current/E系列实验输出/e45p_hasac_bc_anchor_20261101'
 
 
 def register(root,smoke=False):
@@ -53,7 +53,7 @@ def register(root,smoke=False):
     protected=dict(parent['protected_hashes']);protected.update(parent['source_hashes'])
     cfg['protected_hashes']=protected
     files=[Path(__file__).resolve(),ROOT/'code/learning/e45p_actor_supervision.py',
-        ROOT/'code/tests/test_e45p_actor_supervision.py',ROOT/'code/E45P_HASAC_BC_ANCHOR_PROTOCOL_20261101.md',
+        ROOT/'code/tests/test_e45p_actor_supervision.py',ROOT/'文档/实验协议/E45P_HASAC_BC_ANCHOR_PROTOCOL_20261101.md',
         ROOT/'code/audit_e45p_smoke.py']
     cfg['source_hashes']={str(p):j.sha(p) for p in files}
     cfg['bank_hashes']={e['path']:j.sha(e['path']) for e in cfg['entries']}
@@ -268,7 +268,7 @@ def pipeline(args):
     started=time.time()
     try:
         if not cfg['smoke']:
-            smoke=ROOT/'current/e45p_hasac_bc_anchor_smoke_20261101'
+            smoke=ROOT/'current/E系列实验输出/e45p_hasac_bc_anchor_smoke_20261101'
             verify(smoke);assert j.read(smoke/'smoke_audit.json')['passed']
         j.common.emit(root,'bc_running');run_children(root,cfg,args,'bc',started)
         bc={str(s):j.read(root/'bc'/f'HASAC_{s}'/'decision.json') for s in cfg['seeds']}

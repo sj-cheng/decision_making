@@ -7,7 +7,7 @@ from solvers.e45f_support_refinement import refined_posterior
 from solvers.e45_team_adapter import team_hidden_mask
 
 ROOT=Path(__file__).resolve().parents[2]
-EVIDENCE=ROOT/'current/e45j_repaired_benchmark_20261031/belief_failures/public_support_2643505_1793430909283741180.json'
+EVIDENCE=ROOT/'current/E系列实验输出/e45j_repaired_benchmark_20261031/belief_failures/public_support_2643505_1793430909283741180.json'
 
 
 class FineRecoveryTests(unittest.TestCase):
@@ -29,7 +29,7 @@ class FineRecoveryTests(unittest.TestCase):
         self.assertEqual(beliefs[0].signature(),beliefs[1].signature())
 
     def test_successful_public_histories_keep_original_draws_and_posteriors(self):
-        entries=json.loads((ROOT/'current/e45j_repaired_benchmark_20261031/bank/manifest.json').read_text())['validation']
+        entries=json.loads((ROOT/'current/E系列实验输出/e45j_repaired_benchmark_20261031/bank/manifest.json').read_text())['validation']
         for family in ('long_wall','wall_corner','multi_route'):
             item=next(e for e in entries if e['family']==family);c=json.loads(Path(item['path']).read_text())
             old=PreviousBelief(c['map'],17);new=TeamBelief125(c['map'],17)

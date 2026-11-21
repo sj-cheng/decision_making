@@ -6,7 +6,7 @@ from audit_l45_rollout_reliability import observation,save
 from solvers.multimodal_estimator import Estimator
 
 ROOT=Path(__file__).resolve().parent.parent
-OUT=ROOT/"current/l45_multimodal_estimator_20261025"
+OUT=ROOT/"current/L系列实验输出/l45_multimodal_estimator_20261025"
 
 
 def regions(points,boxes,weights):
@@ -25,7 +25,7 @@ def regions(points,boxes,weights):
 
 def run():
     rows=[]
-    for split,bank in [('development',ROOT/'current/l45_occlusion_scenarios_20261025/bank'),('confirmation',OUT/'bank')]:
+    for split,bank in [('development',ROOT/'current/L系列实验输出/l45_occlusion_scenarios_20261025/bank'),('confirmation',OUT/'bank')]:
         entries=json.loads((bank/'manifest.json').read_text())['entries']
         for entry in entries:
             packet=json.loads((bank/entry['public']).read_text())

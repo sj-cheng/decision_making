@@ -16,10 +16,10 @@ import torch
 from run_e45v_fullstate import FullStatePursuitEnv, RetirementHASAC, verify
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = ROOT / "current/e45v_fullstate_hasac_20261103"
-OUT = ROOT / "current/e45v_control_diagnosis_20261103"
+SOURCE = ROOT / "current/E系列实验输出/e45v_fullstate_hasac_20261103"
+OUT = ROOT / "current/E系列实验输出/e45v_control_diagnosis_20261103"
 ENV = ACTORS = None
-SINGLE = ROOT / "current/e45c_budget_scaling_20261028/learning/x20/round_12/models/single_17.npz"
+SINGLE = ROOT / "current/E系列实验输出/e45c_budget_scaling_20261028/learning/x20/round_12/models/single_17.npz"
 
 
 def read(p): return json.loads(Path(p).read_text())

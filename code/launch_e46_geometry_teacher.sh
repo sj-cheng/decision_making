@@ -6,7 +6,7 @@ export CUDA_DEVICE_ORDER=PCI_BUS_ID
 export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMBA_NUM_THREADS=1
 export CUBLAS_WORKSPACE_CONFIG=:4096:8
 E46_PYTHON=/home/sjc/miniconda3/envs/dm_env_py311/bin/python
-E46_OUTPUT=/data2/sjc/decision_making/current/e46_geometry_teacher_20261105
+E46_OUTPUT=/data2/sjc/decision_making/current/E系列实验输出/e46_geometry_teacher_20261105
 mkdir -p -- "$E46_OUTPUT"
 set +e
 "$E46_PYTHON" -u code/run_e46_geometry_teacher.py --output "$E46_OUTPUT" >> "$E46_OUTPUT/console.log" 2>&1

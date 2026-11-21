@@ -17,8 +17,8 @@ from estimator_audit_geometry import point_legal,blocked
 from audit_frozen_d_search_interface import observation,independent_traces,warmup,quantiles
 
 ROOT=Path(__file__).resolve().parent.parent
-OUT=ROOT/'current/l45_closed_loop_D_20261026'
-OLD=ROOT/'current/l45_corner_turn_estimator_20261025/bank'
+OUT=ROOT/'current/L系列实验输出/l45_closed_loop_D_20261026'
+OLD=ROOT/'current/L系列实验输出/l45_corner_turn_estimator_20261025/bank'
 BUDGET=200.
 
 

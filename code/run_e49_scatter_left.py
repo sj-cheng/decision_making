@@ -23,9 +23,9 @@ from e49_rules import create_environment
 from solvers.frozen_d_search_interface import sensor_visible
 from run_e49_benchmark import batch, read, revision, sha, stable_seed, write
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT/'current/e49_scatter_left_nobudget_20261109'
-PREVIOUS = ROOT/'current/e49_scatter_left_20261109'
-FROZEN = ROOT/'current/e49_persistent_pursuit_benchmark_20261108/frozen_methods.json'
+OUT = ROOT/'current/E系列实验输出/e49_scatter_left_nobudget_20261109'
+PREVIOUS = ROOT/'current/E系列实验输出/e49_scatter_left_20261109'
+FROZEN = ROOT/'current/E系列实验输出/e49_persistent_pursuit_benchmark_20261108/frozen_methods.json'
 SPAWNS = 8
 CAPTURE = 1.
 MIN_SEPARATION = 2. * CAPTURE + 0.05

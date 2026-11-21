@@ -21,8 +21,8 @@ import traceback
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT/'current/e48_speed_difficulty_20261107'
-OLD = ROOT/'current/e46_geometry_teacher_20261105'
+OUT = ROOT/'current/E系列实验输出/e48_speed_difficulty_20261107'
+OLD = ROOT/'current/E系列实验输出/e46_geometry_teacher_20261105'
 SPEEDS = (1., 1.3, 1.5)
 ARMS = ('A4', 'AG', 'A2', 'A3')
 FAMILIES = ('long_wall', 'wall_corner', 'multi_route', 'split_gate', 'staggered_gate', 'u_courtyard', 'post_field')
@@ -70,7 +70,7 @@ def prepare():
         chosen.append(dict(entry, original_path=entry['path'], original_sha256=entry['sha256'],
                            path=str(target), sha256=sha(target)))
     protected = dict(cfg['source_hashes'])
-    e47 = read(ROOT/'current/l5_followup_20261107/experiment.json')
+    e47 = read(ROOT/'current/L系列实验输出/l5_followup_20261107/experiment.json')
     protected.update(e47['source_hashes'])
     protected[str(OLD/'training/L5_17_base/selected.npz')] = sha(OLD/'training/L5_17_base/selected.npz')
     for path, digest in protected.items():

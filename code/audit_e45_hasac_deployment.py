@@ -17,7 +17,7 @@ from learning.e45_hasac_deployment import load_actors,Controller
 
 def main():
     torch.set_num_threads(1)
-    out=m.ROOT/'current/e45_hasac_deployment_audit_20261101';out.mkdir(exist_ok=True)
+    out=m.ROOT/'current/E系列实验输出/e45_hasac_deployment_audit_20261101';out.mkdir(exist_ok=True)
     m.configure(out/'public_replay')
     checkpoint=m.OUT/'runs/HASAC_17/checkpoints/steps_0.pt'
     actors,metadata=load_actors(checkpoint,m.j.sha(checkpoint))

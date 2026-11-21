@@ -4,7 +4,7 @@ import run_e45f_generalization_benchmark as f
 import solvers.e45_team_adapter as adapter
 from solvers.e45f_geometry_capacity import geometric_candidates_capacity
 
-FORMAL=f.ROOT/'current/e45f_generalization_benchmark_20261029'
+FORMAL=f.ROOT/'current/E系列实验输出/e45f_generalization_benchmark_20261029'
 AMENDMENT=FORMAL/'GEOMETRY_CAPACITY_COMPAT_20261029.json'
 ORIGINAL_VERIFY=f.verify
 ORIGINAL_REPORT=f.report

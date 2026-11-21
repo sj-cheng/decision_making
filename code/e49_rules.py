@@ -18,7 +18,7 @@ from problems.example8 import Example8
 from local_observation import segment_interval, first_collision_point
 
 ROOT = Path(__file__).resolve().parents[1]
-CPP = ROOT / 'current/e49_persistent_pursuit_benchmark_20261108/cpp'
+CPP = ROOT / 'current/E系列实验输出/e49_persistent_pursuit_benchmark_20261108/cpp'
 
 
 def _legal(point, boxes):

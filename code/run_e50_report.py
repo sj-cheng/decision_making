@@ -33,10 +33,10 @@ def run(out):
               '- 当前 RootPUCT 预算为诊断预算；尚未完成正式多地图、完整预算的论文级双捕获率统计。',
               '- 实车 SLAM/LiDAR/通信硬件尚未接入，当前仍是仿真部署边界审计。', '',
               '## 主要产物', '',
-              '- `current/e50_deployment_audit_20261110/all_methods_unknown_3maps_12cycles.json`',
-              '- `current/e50_deployment_audit_20261110/all_methods_rootpuct_80_accounting.json`',
-              '- `current/e50_deployment_audit_20261110/capturable_consistent_batch_12cycles.json`',
-              '- `current/e50_deployment_audit_20261110/cpp_transition_consistency_20.json`']
+              '- `current/E系列实验输出/e50_deployment_audit_20261110/all_methods_unknown_3maps_12cycles.json`',
+              '- `current/E系列实验输出/e50_deployment_audit_20261110/all_methods_rootpuct_80_accounting.json`',
+              '- `current/E系列实验输出/e50_deployment_audit_20261110/capturable_consistent_batch_12cycles.json`',
+              '- `current/E系列实验输出/e50_deployment_audit_20261110/cpp_transition_consistency_20.json`']
     Path(out).write_text('\n'.join(lines) + '\n')
     return dict(report=str(out), methods=len(screening['rows']))
 

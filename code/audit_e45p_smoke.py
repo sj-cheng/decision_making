@@ -12,7 +12,7 @@ from learning.e45p_actor_supervision import public_teacher,install_anchor
 
 def main():
     torch.set_num_threads(1)
-    root=p.ROOT/'current/e45p_hasac_bc_anchor_smoke_20261101';cfg=p.verify(root)
+    root=p.ROOT/'current/E系列实验输出/e45p_hasac_bc_anchor_smoke_20261101';cfg=p.verify(root)
     assert cfg['smoke'] and p.j.read(root/'decision.json')['status']=='complete'
     data=p.load_data(cfg);teacher=public_teacher(data,'cuda:1');reports=[]
     for seed in cfg['seeds']:

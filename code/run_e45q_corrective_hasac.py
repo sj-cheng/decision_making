@@ -20,7 +20,7 @@ from learning.e45p_actor_supervision import public_teacher,initialize_bc_std,fit
 from learning.e45q_corrective_imitation import pool_for,collect,cosine_lr,sample_labels,stable_bc_step
 j=p.j;o=p.o
 ROOT=p.ROOT
-OUT=ROOT/'current/e45q_corrective_hasac_20261101'
+OUT=ROOT/'current/E系列实验输出/e45q_corrective_hasac_20261101'
 ROUTES=['stable_bc','dagger']
 
 
@@ -66,7 +66,7 @@ def register(root,smoke=False):
     amendment=j.read(p.OUT/'precision_amendment.json');protected.update(amendment['source_hashes'])
     cfg['protected_hashes']=protected
     files=[Path(__file__).resolve(),ROOT/'code/learning/e45q_corrective_imitation.py',
-        ROOT/'code/tests/test_e45q_corrective_imitation.py',ROOT/'code/E45Q_CORRECTIVE_HASAC_PROTOCOL_20261101.md',ROOT/'code/audit_e45q_smoke.py']
+        ROOT/'code/tests/test_e45q_corrective_imitation.py',ROOT/'文档/实验协议/E45Q_CORRECTIVE_HASAC_PROTOCOL_20261101.md',ROOT/'code/audit_e45q_smoke.py']
     cfg['source_hashes']={str(name):j.sha(name) for name in files}
     cfg['bank_hashes']={e['path']:j.sha(e['path']) for e in cfg['entries']}
     cfg['parent_P_experiment_sha256']=j.sha(p.OUT/'experiment.json')
@@ -330,7 +330,7 @@ def pipeline(args):
     started=time.time()
     try:
         if not cfg['smoke']:
-            smoke=ROOT/'current/e45q_corrective_hasac_smoke_20261101';verify(smoke);assert j.read(smoke/'smoke_audit.json')['passed']
+            smoke=ROOT/'current/E系列实验输出/e45q_corrective_hasac_smoke_20261101';verify(smoke);assert j.read(smoke/'smoke_audit.json')['passed']
         j.common.emit(root,'imitation_running');run_group(root,cfg,args,'imitation',started)
         selected,details=choose_route(root,cfg);j.save(root/'route_gate.json',dict(selected=selected,details=details,smoke_bypass=cfg['smoke']))
         do_rl=selected is not None or cfg['smoke']

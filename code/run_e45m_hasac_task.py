@@ -24,7 +24,7 @@ from e45g_training_acceleration import public_geometry_cache
 
 j=l.j
 ROOT=l.ROOT
-OUT=ROOT/'current/e45m_hasac_task_20261101'
+OUT=ROOT/'current/E系列实验输出/e45m_hasac_task_20261101'
 FOLDER=None
 WORKER_MODEL=None
 CURRENT=None
@@ -36,10 +36,10 @@ def register(root,smoke=False):
     root.mkdir(parents=True,exist_ok=True)
     previous=l.verify(l.OUT)
     entries=previous['entries'][:1] if smoke else previous['entries']
-    provenance=j.read(ROOT/'current/e45_marl_macro_audit_20261101/harl_upstream.json')
+    provenance=j.read(ROOT/'current/E系列实验输出/e45_marl_macro_audit_20261101/harl_upstream.json')
     files=[Path(__file__).resolve(),ROOT/'code/learning/e45m_author_hasac.py',
            ROOT/'code/learning/e45m_task_adapter.py',ROOT/'code/tests/test_e45m_hasac_task.py',
-           ROOT/'code/E45M_HASAC_TASK_PROTOCOL_20261101.md']
+           ROOT/'文档/实验协议/E45M_HASAC_TASK_PROTOCOL_20261101.md']
     protected=dict(previous['source_hashes']);protected.update(previous['protected_hashes'])
     upstream=dict(provenance['source_hashes'])
     yaml_path=UPSTREAM/'harl/configs/algos_cfgs/hasac.yaml';upstream[str(yaml_path)]=j.sha(yaml_path)

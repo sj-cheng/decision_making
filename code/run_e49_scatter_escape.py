@@ -20,7 +20,7 @@ import numpy as np
 import run_e49_benchmark as bench
 import run_e49_scatter_left as scatter
 
-OUT = scatter.ROOT/'current/e49_scatter_escape_20261110'
+OUT = scatter.ROOT/'current/E系列实验输出/e49_scatter_escape_20261110'
 SPEED_KEY = 'E49_SCATTER_ESCAPE_SPEED'
 
 

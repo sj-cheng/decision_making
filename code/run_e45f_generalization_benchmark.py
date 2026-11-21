@@ -29,8 +29,8 @@ from e45f_scenarios import ID_FAMILIES,OOD_FAMILIES,new_id_case,shifted_case,geo
 from run_e44_parallel import choose_cpus
 
 ROOT=Path(__file__).resolve().parents[1]
-SOURCE=ROOT/'current/e45c_budget_scaling_20261028'
-OUT=ROOT/'current/e45f_generalization_benchmark_20261029'
+SOURCE=ROOT/'current/E系列实验输出/e45c_budget_scaling_20261028'
+OUT=ROOT/'current/E系列实验输出/e45f_generalization_benchmark_20261029'
 SEEDS=(17,29,43)
 ARMS=('SINGLE_PRIOR','FACT_PRIOR','JOINT_PRIOR','SINGLE_VALUE','SINGLE_DIRECT','U','AG','IG','GEOM_SEARCH','VOO_UCT')
 LEARNED=ARMS[:5]
@@ -110,7 +110,7 @@ def verify():
 def prepare():
     if (OUT/'experiment.json').exists():return verify()
     OUT.mkdir(parents=True,exist_ok=True);old.verify()
-    previous=read(ROOT/'current/e45e_value_off_20261029/experiment.json')
+    previous=read(ROOT/'current/E系列实验输出/e45e_value_off_20261029/experiment.json')
     protected=previous['protected_hashes']|previous['source_hashes']
     protected[str(SOURCE/'bank/manifest.json')]=sha(SOURCE/'bank/manifest.json')
     frozen=read(SOURCE/'models_frozen.json')['files'];models={}
@@ -174,7 +174,7 @@ def prepare():
         source_hashes={str(ROOT/'code'/p):sha(ROOT/'code'/p) for p in SOURCES},protected_hashes=protected,
         bank_hashes={str(p):sha(p) for p in (OUT/'bank').rglob('*.json')},validation_entries=validation)
     save(OUT/'experiment.json',config)
-    (OUT/'PROTOCOL.md').write_bytes((ROOT/'code/E45F_GENERALIZATION_PROTOCOL_20261029.md').read_bytes())
+    (OUT/'PROTOCOL.md').write_bytes((ROOT/'文档/实验协议/E45F_GENERALIZATION_PROTOCOL_20261029.md').read_bytes())
     for p in SOURCES:
         target=OUT/'source_snapshot'/p;target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes((ROOT/'code'/p).read_bytes())
     gallery(entries)

@@ -33,7 +33,7 @@ from learning.e45w_joint_ppo import StructuredJointPolicy, provider_audit
 
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "current/e45w_joint_ppo_and_planning_20261103"
+OUT = ROOT / "current/E系列实验输出/e45w_joint_ppo_and_planning_20261103"
 MANIFEST = OUT / "experiment.json"
 FORMAL_ROLLOUTS = 976
 FORMAL_N_ENVS = 8

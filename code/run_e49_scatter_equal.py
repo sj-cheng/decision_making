@@ -23,8 +23,8 @@ from e49_rules import create_environment
 from solvers.frozen_d_search_interface import sensor_visible
 
 ROOT = scatter.ROOT
-OUT = ROOT/'current/e49_scatter_equal_20261110'
-PREVIOUS = ROOT/'current/e49_scatter_left_20261109'
+OUT = ROOT/'current/E系列实验输出/e49_scatter_equal_20261110'
+PREVIOUS = ROOT/'current/E系列实验输出/e49_scatter_left_20261109'
 SPAWNS = 8
 MIN_PAIR = 4.
 CAPTURE_GAP = 2.05

@@ -13,7 +13,7 @@ from matplotlib.collections import LineCollection
 from matplotlib.backends.backend_pdf import PdfPages
 import plot_e48_dense_obstacles as previous
 
-ROOT=Path(__file__).resolve().parents[1];OUT=ROOT/'current/e50_own_pursuers_20261107'
+ROOT=Path(__file__).resolve().parents[1];OUT=ROOT/'current/E系列实验输出/e50_own_pursuers_20261107'
 METHODS=dict(A3='Your L5 + search',R2='Your Single PRIOR + search',A5='Your L5, direct')
 
 
@@ -100,7 +100,7 @@ def run():
                  'Original direction preferences are retained, not filtered to make curves look different.',fontsize=9)
             pdf.savefig(fig);fig.savefig(OUT/'figures'/f'git_reference_{row["task"]["world"]}.png',dpi=120);plt.close(fig)
     (OUT/'direction_diagnostics.json').write_text(json.dumps(diagnostics,indent=2)+'\n')
-    shutil.copy2(ROOT/'current/e49_hard_initials_20261107/00_hard_initials.pdf',OUT/'00_same_hard_initials.pdf')
+    shutil.copy2(ROOT/'current/E系列实验输出/e49_hard_initials_20261107/00_hard_initials.pdf',OUT/'00_same_hard_initials.pdf')
 
 
 if __name__=='__main__':

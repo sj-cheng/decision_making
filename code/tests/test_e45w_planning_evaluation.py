@@ -89,7 +89,7 @@ class PlanningEvaluationTests(unittest.TestCase):
     def test_normal_public_history_matches_ppo_and_old_f_arithmetic(self):
         from learning.e45w_joint_env import PublicFeatureState
         from solvers.e45f_support_refinement import RefinedTeamBelief
-        cfg = w.read(w.ROOT / "current/e45m_hasac_task_20261101/experiment.json")
+        cfg = w.read(w.ROOT / "current/E系列实验输出/e45m_hasac_task_20261101/experiment.json")
         case = w.read(cfg["entries"][0]["path"])
         w.configure(self.root)
         own = w.factory(case, dict(arm="U", seed=17, budget_ms=200))

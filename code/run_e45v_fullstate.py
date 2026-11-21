@@ -19,8 +19,8 @@ for key in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS", "NUMBA
     os.environ.setdefault(key, "1")
 os.environ.setdefault("MPLBACKEND", "Agg")
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "current/e45v_fullstate_hasac_20261103"
-AUTHOR = ROOT / "current/e45u_official_hasac_calibration_20261102/official_source"
+OUT = ROOT / "current/E系列实验输出/e45v_fullstate_hasac_20261103"
+AUTHOR = ROOT / "current/E系列实验输出/e45u_official_hasac_calibration_20261102/official_source"
 sys.path.insert(0, str(AUTHOR))
 import numpy as np
 import torch

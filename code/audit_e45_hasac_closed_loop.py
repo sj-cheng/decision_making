@@ -19,7 +19,7 @@ import numpy as np
 import run_e45m_hasac_task as m
 from learning.e45_hasac_deployment import load_actors,Controller
 
-OUT=m.ROOT/'current/e45_hasac_deployment_audit_20261101/closed_loop'
+OUT=m.ROOT/'current/E系列实验输出/e45_hasac_deployment_audit_20261101/closed_loop'
 ACTORS=None
 
 

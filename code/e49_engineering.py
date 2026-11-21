@@ -27,7 +27,7 @@ def core_fingerprint():
     root=Path(__file__).resolve().parents[1]
     modules={name:hashlib.sha256((root/'code'/name).read_bytes()).hexdigest()
              for name in ('e49_rules.py','e49_controllers.py','e49_audit.py')}
-    native=root/'current/e49_persistent_pursuit_benchmark_20261108/cpp/source/problems/example8.hpp'
+    native=root/'current/E系列实验输出/e49_persistent_pursuit_benchmark_20261108/cpp/source/problems/example8.hpp'
     return dict(modules=modules,runner_functions=_runner_functions((root/'code/run_e49_benchmark.py').read_text()),
                 native_physics=hashlib.sha256(native.read_bytes()).hexdigest(),engineering_gate_version=2)
 

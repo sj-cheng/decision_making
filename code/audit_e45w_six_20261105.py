@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 import numpy as np
 
 ROOT=Path(__file__).resolve().parents[1]
-W=ROOT/'current/e45w_joint_ppo_and_planning_20261103'
+W=ROOT/'current/E系列实验输出/e45w_joint_ppo_and_planning_20261103'
 
 
 def read(p):return json.loads(Path(p).read_text())

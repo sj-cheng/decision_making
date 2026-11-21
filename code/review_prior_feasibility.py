@@ -11,7 +11,7 @@ import torch
 from learning.e45b_joint_network import Runtime, KEYS, log_density
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = ROOT / 'current/e45c_budget_scaling_20261028'
+SOURCE = ROOT / 'current/E系列实验输出/e45c_budget_scaling_20261028'
 OUT = ROOT / 'current/prior_feasibility_review_20261029'
 SEEDS = (17, 29, 43)
 KINDS = ('single', 'factorized', 'joint')

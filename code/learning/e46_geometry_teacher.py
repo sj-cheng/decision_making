@@ -18,7 +18,7 @@ from solvers.e45f_baselines import GeometryController
 from solvers.frozen_d_search_interface import move, safe, target_step
 
 ROOT = Path(__file__).resolve().parents[2]
-OLD_MODELS = ROOT / 'current/e45c_budget_scaling_20261028/learning/x20/round_12/models'
+OLD_MODELS = ROOT / 'current/E系列实验输出/e45c_budget_scaling_20261028/learning/x20/round_12/models'
 
 
 def geometric_options(own, node):

@@ -42,8 +42,8 @@ from learning.e46_geometry_teacher import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
-OLD = ROOT/'current/e46_geometry_teacher_20261105'
-DEFAULT = ROOT/'current/l5_followup_20261107'
+OLD = ROOT/'current/E系列实验输出/e46_geometry_teacher_20261105'
+DEFAULT = ROOT/'current/L系列实验输出/l5_followup_20261107'
 PLAN = ROOT/'总结文档/L5同池归因与执行验证实验计划_20261107.md'
 SEEDS = (17, 29, 43)
 OPPONENTS = ('fixed_D_kernel', 'rootpuct')

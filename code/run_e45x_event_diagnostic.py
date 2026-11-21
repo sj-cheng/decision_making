@@ -27,8 +27,8 @@ from e45c_capture_audit import audit_simulated
 from run_e45w_joint_training import sha
 
 ROOT=Path(__file__).resolve().parents[1]
-W=ROOT/'current/e45w_joint_ppo_and_planning_20261103'
-OUT=ROOT/'current/e45x_first_capture_diagnostic_20261104'
+W=ROOT/'current/E系列实验输出/e45w_joint_ppo_and_planning_20261103'
+OUT=ROOT/'current/E系列实验输出/e45x_first_capture_diagnostic_20261104'
 ACTOR=None;CFG=None;CPUS=None;CACHE={}
 
 

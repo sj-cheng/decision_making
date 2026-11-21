@@ -21,7 +21,7 @@ def main():
     experiment=json.loads((OUTPUT/'experiment.json').read_text())
     for name,h in (experiment['sources']|experiment['inputs']|experiment['deployment_before_sha256']).items():
         if sha(name)!=h:raise RuntimeError('Source or input changed: '+name)
-    archive=ROOT/'current/l45_weighted_search_interface_20261026/source_snapshot.json'
+    archive=ROOT/'current/L系列实验输出/l45_weighted_search_interface_20261026/source_snapshot.json'
     for name,entry in json.loads(archive.read_text()).items():
         if sha(entry['snapshot'])!=entry['sha256']:raise RuntimeError('Original audit source archive changed: '+name)
     loader.verify()

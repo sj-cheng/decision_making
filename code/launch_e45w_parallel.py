@@ -17,7 +17,7 @@ import time
 import traceback
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "current/e45w_joint_ppo_and_planning_20261103"
+OUT = ROOT / "current/E系列实验输出/e45w_joint_ppo_and_planning_20261103"
 PYTHON = OUT / "venv/bin/python"
 TARGET_TEAMS = 976 * 8 * 256
 

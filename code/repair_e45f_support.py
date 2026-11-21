@@ -15,7 +15,7 @@ import run_e45f_capacity_compat as capacity
 import run_e45b_role_free as base
 from solvers.e45f_support_refinement import RefinedTeamBelief, install as install_refinement
 
-ORIGINAL = f.ROOT / 'current/e45f_generalization_benchmark_20261029'
+ORIGINAL = f.ROOT / 'current/E系列实验输出/e45f_generalization_benchmark_20261029'
 OUT = ORIGINAL.with_name(ORIGINAL.name + '_support_repaired')
 
 

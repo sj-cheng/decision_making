@@ -26,7 +26,7 @@ def main():
         checks.append(dict(stage=stage,groups=groups,games=games,passed=True))
     preflight=json.loads((OUT/'preflight.json').read_text())
     assert preflight['passed'] and all(r['exact'] for r in preflight['replays'])
-    old=ROOT/'current/l45_weighted_search_interface_v2_20261026'
+    old=ROOT/'current/L系列实验输出/l45_weighted_search_interface_v2_20261026'
     prior=json.loads((old/'DELIVERY_SHA256.json').read_text())
     # Top-level chronological summaries may now contain this later stage;
     # all prior experiment/data/frozen-code artifacts themselves must match.

@@ -29,8 +29,8 @@ from learning.e45j_support125 import install
 from e45g_training_acceleration import public_geometry_cache
 
 ROOT = Path(__file__).resolve().parents[1]
-JROOT = ROOT / 'current/e45j_repaired_benchmark_20261031'
-DEFAULT_OUT = ROOT / 'current/e45k_main_task_learning_20261031'
+JROOT = ROOT / 'current/E系列实验输出/e45j_repaired_benchmark_20261031'
+DEFAULT_OUT = ROOT / 'current/E系列实验输出/e45k_main_task_learning_20261031'
 BASE_SEED = 947220261031
 VARIANTS = ('original_reward', 'capture_credit')
 FOLDER = None
@@ -85,7 +85,7 @@ def register(root, smoke=False):
     if smoke:
         train, probes, validation = train[:2], probes[:1], validation[:1]
     source_files = [Path(__file__).resolve(), ROOT/'code/tests/test_e45k_main_task_learning.py',
-                    ROOT/'code/E45K_MAIN_TASK_LEARNING_PROTOCOL_20261031.md',
+                    ROOT/'文档/实验协议/E45K_MAIN_TASK_LEARNING_PROTOCOL_20261031.md',
                     ROOT/'code/learning/e45j_repaired_mappo.py',
                     ROOT/'code/learning/e45i_official_mappo.py',
                     ROOT/'code/learning/e45j_support125.py',
@@ -117,7 +117,7 @@ def register(root, smoke=False):
     for p in source_files:
         dst=root/'source_snapshot'/p.relative_to(ROOT/'code');dst.parent.mkdir(parents=True,exist_ok=True)
         shutil.copy2(p,dst)
-    shutil.copy2(ROOT/'code/E45K_MAIN_TASK_LEARNING_PROTOCOL_20261031.md',root/'PROTOCOL.md')
+    shutil.copy2(ROOT/'文档/实验协议/E45K_MAIN_TASK_LEARNING_PROTOCOL_20261031.md',root/'PROTOCOL.md')
     return verify(root)
 
 

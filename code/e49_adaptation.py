@@ -334,7 +334,7 @@ def _mappo_train(out,seed,source,entries,horizon,target_steps,device):
 
 
 def _ppo_train(out,seed,source,entries,horizon,target_steps,device):
-    dependencies=Path(__file__).resolve().parents[1]/'current/e49_persistent_pursuit_benchmark_20261108/python_deps'
+    dependencies=Path(__file__).resolve().parents[1]/'current/E系列实验输出/e49_persistent_pursuit_benchmark_20261108/python_deps'
     if dependencies.exists() and str(dependencies) not in sys.path:sys.path.insert(0,str(dependencies))
     import gymnasium as gym
     from gymnasium import spaces

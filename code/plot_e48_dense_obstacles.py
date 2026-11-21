@@ -14,7 +14,7 @@ from matplotlib.collections import LineCollection
 from matplotlib.patches import Rectangle
 
 ROOT=Path(__file__).resolve().parents[1]
-OUT=ROOT/'current/e48_dense_obstacles_20261107'
+OUT=ROOT/'current/E系列实验输出/e48_dense_obstacles_20261107'
 LABELS=dict(A2='Geometry ranking + search',A3='L5 learned ranking + search',
             A4='Geometry top, direct',A5='L5 learned top, direct',AG='Assigned geometry (AG)')
 COLORS=['#e66101','#b2182b','#2166ac','#1b9e77']

@@ -10,7 +10,7 @@ import numpy as np
 import torch
 import run_e45m_hasac_task as m
 
-OUT=m.ROOT/'current/e45_marl_macro_audit_20261101/hasac_value_calibration_20k'
+OUT=m.ROOT/'current/E系列实验输出/e45_marl_macro_audit_20261101/hasac_value_calibration_20k'
 
 
 class LoggingActor:
@@ -95,7 +95,7 @@ def main(minimum_steps=20000):
 
 def watch():
     global OUT
-    review=m.ROOT/'current/e45_marl_macro_audit_20261101/hasac_value_calibration_curve'
+    review=m.ROOT/'current/E系列实验输出/e45_marl_macro_audit_20261101/hasac_value_calibration_curve'
     config=m.j.read(m.OUT/'experiment.json');curve={}
     for threshold in (20000,40000,60000,80000,100000):
         OUT=review.parent/f'hasac_value_calibration_{threshold//1000}k'

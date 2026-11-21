@@ -3,7 +3,7 @@ import datetime
 import json
 from pathlib import Path
 
-out = Path(__file__).resolve().parents[1] / "current/e45v_fullstate_hasac_20261103"
+out = Path(__file__).resolve().parents[1] / "current/E系列实验输出/e45v_fullstate_hasac_20261103"
 print("E45-V | full-state moving fixed-D pursuit diagnostic | tmux:train")
 print(datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8))).isoformat(timespec="seconds"))
 print("20 rollout envs / seed; 1M post-warmup team transitions; UTD .05; no teacher")

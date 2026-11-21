@@ -15,7 +15,7 @@ from learning.e45w_joint_ppo import (StructuredJointPolicy, MaskedJointGaussian,
     structured_observation_space, latent_action_space, provider_audit)
 
 ROOT = Path(__file__).resolve().parents[2]
-MODEL = ROOT / "current/e45c_budget_scaling_20261028/learning/x20/round_12/models/single_17.pt"
+MODEL = ROOT / "current/E系列实验输出/e45c_budget_scaling_20261028/learning/x20/round_12/models/single_17.pt"
 NPZ = MODEL.with_suffix(".npz")
 
 
@@ -133,7 +133,7 @@ class JointPolicyTests(unittest.TestCase):
 
     def test_real_pursuit_rollout_density_and_ppo_update(self):
         from learning.e45w_joint_env import PublicJointPursuitEnv
-        cfg = json.loads((ROOT / "current/e45m_hasac_task_20261101/experiment.json").read_text())
+        cfg = json.loads((ROOT / "current/E系列实验输出/e45m_hasac_task_20261101/experiment.json").read_text())
         env = PublicJointPursuitEnv({"case_paths": [cfg["entries"][0]["path"]],
                                     "opponents": ["fixed_D_kernel"]})
         checks = []

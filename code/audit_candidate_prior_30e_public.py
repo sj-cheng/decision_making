@@ -15,7 +15,7 @@ from learning.candidate_prior import Network, mixed_prior, geometry_scores
 from audit_frozen_d_search_interface import observation
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT/'current/l45_candidate_prior_30e_20261026'
+OUT = ROOT/'current/L系列实验输出/l45_candidate_prior_30e_20261026'
 
 
 def register():

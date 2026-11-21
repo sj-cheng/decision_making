@@ -22,8 +22,8 @@ from learning.e45p_execution_precision import pool_for
 
 j=o.j
 ROOT=o.ROOT
-OUT=ROOT/'current/e45r_hasac_continuation_20261102'
-SMOKE=ROOT/'current/e45r_hasac_continuation_smoke_20261102'
+OUT=ROOT/'current/E系列实验输出/e45r_hasac_continuation_20261102'
+SMOKE=ROOT/'current/E系列实验输出/e45r_hasac_continuation_smoke_20261102'
 ARMS=('replay','replay_bc')
 
 
@@ -51,7 +51,7 @@ def register(root,smoke=False):
     if (root/'experiment.json').exists():return verify(root)
     root.mkdir(parents=True,exist_ok=True)
     parent=o.verify(o.OUT)
-    audit=ROOT/'current/e45q_teacher_label_audit_20261102'
+    audit=ROOT/'current/E系列实验输出/e45q_teacher_label_audit_20261102'
     assert j.read(audit/'decision.json')['status']=='diagnosis_complete'
     assert j.read(audit/'summary.json')['inputs_unchanged']
     data=checked_data(o.OUT/'demonstrations/data.npz')
@@ -97,7 +97,7 @@ def register(root,smoke=False):
         protected[str(path)]=j.sha(path)
     cfg['protected_hashes']=protected
     files=[Path(__file__).resolve(),ROOT/'code/audit_e45r_smoke.py',
-        ROOT/'code/E45R_HASAC_CONTINUATION_PROTOCOL_20261102.md']
+        ROOT/'文档/实验协议/E45R_HASAC_CONTINUATION_PROTOCOL_20261102.md']
     cfg['source_hashes']={str(path):j.sha(path) for path in files}
     j.save(root/'experiment.json',cfg)
     for path in files:

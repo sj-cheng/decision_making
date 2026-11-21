@@ -23,8 +23,8 @@ from solvers.deployment_puct import DeploymentPUCT
 o,s,v,f=base.o,base.s,base.v,base.f
 ROOT,CODE=o.ROOT,o.CODE
 SOURCE=research.DEFAULT
-DEFAULT_OUTPUT=ROOT/'current/l45_synchronous_search_20261024'
-SMOKE_OUTPUT=ROOT/'current/l45_synchronous_search_smoke_20261024'
+DEFAULT_OUTPUT=ROOT/'current/L系列实验输出/l45_synchronous_search_20261024'
+SMOKE_OUTPUT=ROOT/'current/L系列实验输出/l45_synchronous_search_smoke_20261024'
 lock_json,locked_read=base.lock_json,base.locked_read
 SCIENCE=base.SCIENCE
 SPLITS=base.SPLITS

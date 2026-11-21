@@ -9,8 +9,8 @@ from pathlib import Path
 import numpy as np
 
 ROOT=Path(__file__).resolve().parents[1]
-OUT=ROOT/'current/e45z_model_calibration_20261104'
-REFERENCE=ROOT/'current/e45x_first_capture_diagnostic_20261104/root_ranking_audit.json'
+OUT=ROOT/'current/E系列实验输出/e45z_model_calibration_20261104'
+REFERENCE=ROOT/'current/E系列实验输出/e45x_first_capture_diagnostic_20261104/root_ranking_audit.json'
 
 
 def sha(p):return hashlib.sha256(Path(p).read_bytes()).hexdigest()

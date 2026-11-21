@@ -17,7 +17,7 @@ from learning.e45g_ppo import safe_action
 from e45g_training_acceleration import public_geometry_cache
 
 ROOT=n.ROOT
-OUT=ROOT/'current/e45s_n29_collapse_20261102'
+OUT=ROOT/'current/E系列实验输出/e45s_n29_collapse_20261102'
 
 
 def sha(path):return hashlib.sha256(Path(path).read_bytes()).hexdigest()
@@ -228,7 +228,7 @@ def main():
     parser=argparse.ArgumentParser();parser.add_argument('--output',type=Path,default=OUT);args=parser.parse_args()
     args.output.mkdir(parents=True,exist_ok=True);audit=Audit(args.output);torch.set_num_threads(1)
     started=time.time();cfg=n.verify(n.OUT)
-    for path in [Path(__file__),n.OUT/'experiment.json',ROOT/'code/E45S_N29_COLLAPSE_AUDIT_PROTOCOL_20261102.md']:
+    for path in [Path(__file__),n.OUT/'experiment.json',ROOT/'文档/实验协议/E45S_N29_COLLAPSE_AUDIT_PROTOCOL_20261102.md']:
         audit.protect(path)
     for section in ('source_hashes','protected_hashes','upstream_hashes','bank_hashes'):
         for path,value in cfg[section].items():audit.protect(path,value)

@@ -15,7 +15,7 @@ import numpy as np
 import run_e45k_main_task_learning as k
 
 ROOT=k.ROOT
-OUT=ROOT/'current/e45_marl_macro_audit_20261101'
+OUT=ROOT/'current/E系列实验输出/e45_marl_macro_audit_20261101'
 
 
 def job(row):

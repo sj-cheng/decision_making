@@ -48,7 +48,7 @@ class ClosedLoopTests(unittest.TestCase):
         c=Controller([],1.1,'G',17,budget_ms=BUDGET)
         self.assertEqual(c.budget_ms,200.)
         self.assertEqual(before,loader.verify())
-        old=json.loads((ROOT/'current/l45_weighted_search_interface_v2_20261026/results.json').read_text())
+        old=json.loads((ROOT/'current/L系列实验输出/l45_weighted_search_interface_v2_20261026/results.json').read_text())
         self.assertFalse(old['passed'])
         self.assertTrue(all(not v for v in old['budget_checks'].values()))
 

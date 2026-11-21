@@ -18,7 +18,7 @@ import run_e48_dense_obstacles as dense
 
 previous=dense.previous
 ROOT=dense.ROOT
-OUT=ROOT/'current/e51_dense_faster_evader_20261107'
+OUT=ROOT/'current/E系列实验输出/e51_dense_faster_evader_20261107'
 EVADER_SPEED=1.3
 ARMS=('A3','R2','A2','A4','A5','AG')
 
@@ -43,7 +43,7 @@ def prepare():
     OUT.mkdir(parents=True,exist_ok=True)
     path=OUT/'experiment.json'
     if path.exists():return previous.read(path)
-    source=previous.read(ROOT/'current/e48_dense_obstacles_20261107/experiment.json')
+    source=previous.read(ROOT/'current/E系列实验输出/e48_dense_obstacles_20261107/experiment.json')
     for group in source['protected'].values():
         for file,digest in group.items():assert previous.sha(file)==digest,file
     methods=[next(s for s in dense.specs()+previous.specs() if s['arm']==arm and s['train_seed']==17) for arm in ARMS]

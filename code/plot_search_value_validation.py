@@ -14,7 +14,7 @@ import numpy as np
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_OUTPUT = ROOT / "current/l45_search_value_20261026"
+DEFAULT_OUTPUT = ROOT / "current/L系列实验输出/l45_search_value_20261026"
 METHODS = ("G", "OL200", "FB200", "OLH", "FBH")
 PANELS = (("matched", "rediscovery_cost", "Model-matched target: first rediscovery",
            "Failure-penalized rediscovery cost (steps)"),

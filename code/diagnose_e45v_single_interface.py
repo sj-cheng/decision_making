@@ -8,7 +8,7 @@ import time
 import numpy as np
 import diagnose_e45v_control as d
 
-OUT = d.ROOT / "current/e45v_single_interface_20261103"
+OUT = d.ROOT / "current/E系列实验输出/e45v_single_interface_20261103"
 COUNTS = None
 
 

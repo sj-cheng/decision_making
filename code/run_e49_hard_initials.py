@@ -18,7 +18,7 @@ from e49_hard_scenarios import construct,audit
 from solvers.e49_geometric_evader import GeometricEvader,acceptance as evader_acceptance
 
 previous=dense.previous
-ROOT=dense.ROOT;OUT=ROOT/'current/e49_hard_initials_20261107'
+ROOT=dense.ROOT;OUT=ROOT/'current/E系列实验输出/e49_hard_initials_20261107'
 BASE=14920261107
 OPPONENTS=('rootpuct','geometry_escape')
 
@@ -30,7 +30,7 @@ def configure():
 def prepare():
     OUT.mkdir(exist_ok=True);path=OUT/'experiment.json'
     if path.exists():return previous.read(path)
-    protected=previous.read(ROOT/'current/e48_dense_obstacles_20261107/experiment.json')
+    protected=previous.read(ROOT/'current/E系列实验输出/e48_dense_obstacles_20261107/experiment.json')
     entries=[]
     for index in range(6):
         for world in ('AB','BA'):

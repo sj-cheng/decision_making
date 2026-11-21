@@ -8,7 +8,7 @@ import sys
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "current/e45u_official_hasac_calibration_20261102"
+OUT = ROOT / "current/E系列实验输出/e45u_official_hasac_calibration_20261102"
 PYTHON = OUT / "venv/bin/python"
 
 

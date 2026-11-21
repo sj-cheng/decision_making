@@ -27,7 +27,7 @@ from e45g_training_acceleration import public_geometry_cache
 
 j=l.j
 ROOT=l.ROOT
-OUT=ROOT/'current/e45o_hasac_demonstration_20261101'
+OUT=ROOT/'current/E系列实验输出/e45o_hasac_demonstration_20261101'
 FOLDER=None
 WORKER_MODEL=None
 CURRENT=None
@@ -58,7 +58,7 @@ def register(root,smoke=False):
     protected=dict(parent['protected_hashes']);protected.update(parent['source_hashes'])
     cfg['protected_hashes']=protected
     files=[Path(__file__).resolve(),ROOT/'code/learning/e45o_demonstration_replay.py',
-           ROOT/'code/tests/test_e45o_demonstration_replay.py',ROOT/'code/E45O_HASAC_DEMONSTRATION_PROTOCOL_20261101.md',
+           ROOT/'code/tests/test_e45o_demonstration_replay.py',ROOT/'文档/实验协议/E45O_HASAC_DEMONSTRATION_PROTOCOL_20261101.md',
            ROOT/'code/audit_e45o_demonstration_smoke.py']
     cfg['source_hashes']={str(p):j.sha(p) for p in files}
     cfg['bank_hashes']={e['path']:j.sha(e['path']) for e in cfg['entries']}

@@ -24,8 +24,8 @@ from verify_l45_occlusion_scenarios import movement
 
 
 ROOT = Path(__file__).resolve().parent.parent
-SOURCE = ROOT/"current/l45_occlusion_scenarios_20261025/bank"
-DEFAULT = ROOT/"current/l45_rollout_reliability_20261025"
+SOURCE = ROOT/"current/L系列实验输出/l45_occlusion_scenarios_20261025/bank"
+DEFAULT = ROOT/"current/L系列实验输出/l45_rollout_reliability_20261025"
 
 
 def sha(path):

@@ -18,7 +18,7 @@ FAMILY_SPLIT = {
     'post_field': 'train', 'staggered_gate': 'validation',
     'split_gate': 'test', 'u_courtyard': 'test',
 }
-SOURCE = ROOT / 'current/e49_persistent_pursuit_benchmark_20261108/engineering/cases'
+SOURCE = ROOT / 'current/E系列实验输出/e49_persistent_pursuit_benchmark_20261108/engineering/cases'
 
 
 def save(path, data):

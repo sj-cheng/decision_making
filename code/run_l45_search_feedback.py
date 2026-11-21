@@ -29,8 +29,8 @@ from torch.distributions import Normal, kl_divergence
 o, f, previous = v.o, v.followup, v.previous
 ROOT = o.ROOT
 SOURCE = b.DEFAULT_OUTPUT
-DEFAULT_OUTPUT = ROOT / 'current/l45_search_feedback_20261023'
-SMOKE_OUTPUT = ROOT / 'current/l45_search_feedback_smoke_20261023'
+DEFAULT_OUTPUT = ROOT / 'current/L系列实验输出/l45_search_feedback_20261023'
+SMOKE_OUTPUT = ROOT / 'current/L系列实验输出/l45_search_feedback_smoke_20261023'
 ARMS, SEEDS = ('S', 'J'), (0, 1, 2)
 CONTROL, BASELINE = 'old0:novalue', 'baseline:novalue'
 SPLITS = dict(validation_four=('four', 100), validation_none=('none', 50),
@@ -192,7 +192,7 @@ def prepare(args):
     lock_json(out / 'scenario_independence.json', dict(
         previous_physical_scenes=historical_count, new_scenes=len(used)-historical_count,
         overlap=0, history_files=len(files), paired_S_J_training_is_only_shared_exception=True,
-        scope='All recoverable current/l45*/**/scenarios.json and **/rollouts/*.json, including smoke, startup archives and actual rollouts; not all NTE pretraining states.'))
+        scope='All recoverable current/L系列实验输出/l45*/**/scenarios.json and **/rollouts/*.json, including smoke, startup archives and actual rollouts; not all NTE pretraining states.'))
     verify(args)
     return banks
 

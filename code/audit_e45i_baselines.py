@@ -22,8 +22,8 @@ from run_frozen_d_closed_loop import save,sha
 from run_e44_parallel import choose_cpus
 
 ROOT=Path(__file__).resolve().parents[1]
-SOURCE=ROOT/'current/e45i_official_baselines_20261031'
-OUT=ROOT/'current/e45i_code_audit_20261031'
+SOURCE=ROOT/'current/E系列实验输出/e45i_official_baselines_20261031'
+OUT=ROOT/'current/E系列实验输出/e45i_code_audit_20261031'
 LAST=None
 
 

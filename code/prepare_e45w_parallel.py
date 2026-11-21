@@ -8,8 +8,8 @@ import numpy as np
 from e45f_scenarios import ID_FAMILIES, OOD_FAMILIES, new_id_case, shifted_case, geometry_key
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "current/e45w_joint_ppo_and_planning_20261103"
-C = ROOT / "current/e45c_budget_scaling_20261028"
+OUT = ROOT / "current/E系列实验输出/e45w_joint_ppo_and_planning_20261103"
+C = ROOT / "current/E系列实验输出/e45c_budget_scaling_20261028"
 BASE = 14530261103
 
 

@@ -23,8 +23,8 @@ torch.set_num_threads(1)
 o,old=prior.o,prior.old
 ROOT,CODE=o.ROOT,o.CODE
 SOURCE=prior.DEFAULT_OUTPUT
-DEFAULT_OUTPUT=ROOT/'current/l45_search_contribution_20261024'
-SMOKE_OUTPUT=ROOT/'current/l45_search_contribution_smoke_20261024'
+DEFAULT_OUTPUT=ROOT/'current/L系列实验输出/l45_search_contribution_20261024'
+SMOKE_OUTPUT=ROOT/'current/L系列实验输出/l45_search_contribution_smoke_20261024'
 UIDS=('S','F','G','G-no-neural','Geometry-only')
 SEARCH_UIDS=UIDS[:-1]
 VARIANT={'S':'S','F':'F','G':'G','G-no-neural':'N','Geometry-only':'Geometry'}

@@ -100,7 +100,7 @@ def register():
     j.save(OUT/'amendment_01.json',data)
     for name in FILES:
         p=OUT/'amendment_01_source'/name;p.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(ROOT/'code'/name,p)
-    shutil.copy2(ROOT/'code/E45J_SUPPORT125_AMENDMENT_20261031.md',OUT/'AMENDMENT_01.md')
+    shutil.copy2(ROOT/'文档/实验协议/E45J_SUPPORT125_AMENDMENT_20261031.md',OUT/'AMENDMENT_01.md')
     print(json.dumps(data,ensure_ascii=False),flush=True)
 
 

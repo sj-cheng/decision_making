@@ -276,7 +276,7 @@ def prepare(out, horizon=80):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--out', type=Path, default=ROOT/'current/e49_persistent_pursuit_benchmark_20261108')
+    parser.add_argument('--out', type=Path, default=ROOT/'current/E系列实验输出/e49_persistent_pursuit_benchmark_20261108')
     parser.add_argument('--horizon', type=int, default=80)
     args = parser.parse_args()
     result = prepare(args.out, args.horizon)

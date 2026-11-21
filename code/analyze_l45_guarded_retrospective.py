@@ -103,7 +103,7 @@ def main():
             'Fit errors use training labels, not held-out labels or deployment-state labels.',
             'Average batch KL is not a per-state or initial-to-final deployment guarantee.',
             'Observed phase failure counts do not identify which phase caused the outcome.'])
-    target = m.ROOT / 'current/l45_experiment_retrospective_20261023'
+    target = m.ROOT / 'current/L系列实验输出/l45_experiment_retrospective_20261023'
     target.mkdir(exist_ok=True)
     m.o.write_json(target / 'guarded_diagnostics.json', result)
     print(json.dumps(result, ensure_ascii=False, indent=2))

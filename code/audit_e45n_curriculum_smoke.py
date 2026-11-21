@@ -25,7 +25,7 @@ def model_difference(a,b):
 
 def main():
     torch.set_num_threads(1)
-    root=n.ROOT/'current/e45n_hasac_curriculum_smoke_20261101'
+    root=n.ROOT/'current/E系列实验输出/e45n_hasac_curriculum_smoke_20261101'
     assert n.j.read(root/'decision.json')['status']=='complete'
     cfg=n.verify(root);folder=root/'runs/HASAC_Curriculum_17'
     d=n.j.read(folder/'decision.json');assert d['gradient_updates']==6 and len(d['gates'])==3

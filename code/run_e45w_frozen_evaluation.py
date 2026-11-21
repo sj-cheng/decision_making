@@ -26,7 +26,7 @@ from run_e45w_joint_training import (evaluation_specs, init_evaluation_worker,
     evaluate_frozen_actor, score, tensor_hash, validate_manifest)
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "current/e45w_joint_ppo_and_planning_20261103"
+OUT = ROOT / "current/E系列实验输出/e45w_joint_ppo_and_planning_20261103"
 MANIFEST = OUT / "experiment.json"
 WORKER_STATES = {}
 

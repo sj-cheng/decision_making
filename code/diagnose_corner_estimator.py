@@ -9,8 +9,8 @@ from solvers.corner_estimator import Estimator
 from run_multimodal_estimator_validation import score
 
 ROOT=Path(__file__).resolve().parent.parent
-SOURCE=ROOT/'current/l45_multimodal_estimator_20261025'
-OUT=ROOT/'current/l45_corner_turn_estimator_20261025'
+SOURCE=ROOT/'current/L系列实验输出/l45_multimodal_estimator_20261025'
+OUT=ROOT/'current/L系列实验输出/l45_corner_turn_estimator_20261025'
 
 
 def main():

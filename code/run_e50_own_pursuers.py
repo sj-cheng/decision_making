@@ -18,8 +18,8 @@ import numpy as np
 import run_e49_hard_initials as hard
 
 previous=hard.previous;ROOT=hard.ROOT
-OUT=ROOT/'current/e50_own_pursuers_20261107'
-E49=ROOT/'current/e49_hard_initials_20261107'
+OUT=ROOT/'current/E系列实验输出/e50_own_pursuers_20261107'
+E49=ROOT/'current/E系列实验输出/e49_hard_initials_20261107'
 
 
 def prepare():

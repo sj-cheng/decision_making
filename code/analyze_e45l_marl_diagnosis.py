@@ -8,7 +8,7 @@ from pathlib import Path
 import time
 import numpy as np
 
-ROOT=Path(__file__).resolve().parents[1]/'current/e45l_marl_diagnosis_20261101'
+ROOT=Path(__file__).resolve().parents[1]/'current/E系列实验输出/e45l_marl_diagnosis_20261101'
 
 
 def read(p):return json.loads(p.read_text())

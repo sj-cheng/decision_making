@@ -4,9 +4,9 @@ import json
 from pathlib import Path
 
 
-def run(output, root='current/e50_deployment_audit_20261117'):
+def run(output, root='current/E系列实验输出/e50_deployment_audit_20261117'):
     root = Path(root)
-    legacy = Path('current/e50_deployment_audit_20261110')
+    legacy = Path('current/E系列实验输出/e50_deployment_audit_20261110')
     def exists(name): return (root / name).exists() or (legacy / name).exists()
     checks = [
         ('known_map_regression', exists('rolling_long_wall_0001.json'), 'execution smoke exists'),

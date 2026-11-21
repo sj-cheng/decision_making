@@ -27,7 +27,7 @@ import traceback
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT = ROOT/'current/e49_persistent_pursuit_benchmark_20261108'
+DEFAULT = ROOT/'current/E系列实验输出/e49_persistent_pursuit_benchmark_20261108'
 SEEDS = (17, 29, 43)
 HORIZONS = (40, 60, 80, 100, 120, 160)
 
@@ -349,7 +349,7 @@ def freeze_sources(out,specs):
     historical={}
     for base in (ROOT/'code/learning',ROOT/'code/solvers',ROOT/'code/problems',
                  ROOT/'third_party/mappo_on_policy/onpolicy',
-                 ROOT/'current/l45_corner_turn_estimator_20261025/frozen_estimator'):
+                 ROOT/'current/L系列实验输出/l45_corner_turn_estimator_20261025/frozen_estimator'):
         for path in base.rglob('*.py'):
             if '__pycache__' in path.parts or '/cpp/build' in str(path):continue
             if path.name in sources and path.parent==ROOT/'code':continue

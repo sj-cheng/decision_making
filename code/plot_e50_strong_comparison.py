@@ -14,7 +14,7 @@ from matplotlib.lines import Line2D
 import plot_e48_dense_obstacles as plot
 
 ROOT=Path(__file__).resolve().parents[1]
-OUT=ROOT/'current/e50_own_pursuers_20261107';E49=ROOT/'current/e49_hard_initials_20261107'
+OUT=ROOT/'current/E系列实验输出/e50_own_pursuers_20261107';E49=ROOT/'current/E系列实验输出/e49_hard_initials_20261107'
 NAMES=dict(A3='L5 + search',R2='Single PRIOR + search',GIT='Git d47d188 search + learning',
            A2='Same-pool geometry + search',A4='Geometry direct',AG='Assigned geometry (AG)')
 

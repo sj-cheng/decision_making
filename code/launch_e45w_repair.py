@@ -12,7 +12,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 ROOT=Path(__file__).resolve().parents[1]
-OUT=ROOT/'current/e45w_joint_ppo_and_planning_20261103'
+OUT=ROOT/'current/E系列实验输出/e45w_joint_ppo_and_planning_20261103'
 STATE=OUT/'repair_coordinator'
 PYTHON=OUT/'venv/bin/python'
 POOLS={'B_17':(1,list(range(0,8))), 'C_17':(1,list(range(8,16))),

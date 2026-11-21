@@ -27,8 +27,8 @@ from solvers.local_pursuit import safe,Observation
 
 torch.set_num_threads(1)
 ROOT=Path(__file__).resolve().parent.parent
-SOURCE=ROOT/'current/l45_memory_nte_20261025'
-DEFAULT=ROOT/'current/l45_branch_nte_20261025'
+SOURCE=ROOT/'current/L系列实验输出/l45_memory_nte_20261025'
+DEFAULT=ROOT/'current/L系列实验输出/l45_branch_nte_20261025'
 SEED=63020261025
 FAMILIES=('long_wall','wall_corner','multi_route')
 METHODS=('G','T','M','H','H-U','H-D')
@@ -68,7 +68,7 @@ def check_frozen(output):
 def prepare(output):
     output.mkdir(parents=True,exist_ok=True)
     if (output/'experiment.json').exists():return check_frozen(output)
-    invalid=ROOT/'current/l45_branch_nte_20261025/INVALIDATION.json'
+    invalid=ROOT/'current/L系列实验输出/l45_branch_nte_20261025/INVALIDATION.json'
     carry=json.loads(invalid.read_text())['teacher_queries_spent'] if invalid.exists() else 0
     original=json.loads((SOURCE/'experiment.json').read_text())
     for relative,h in original['artifacts'].items():

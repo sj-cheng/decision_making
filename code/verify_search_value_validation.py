@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 ROOT=Path(__file__).resolve().parents[1]
-DEFAULT=ROOT/'current/l45_search_value_20261026'
+DEFAULT=ROOT/'current/L系列实验输出/l45_search_value_20261026'
 
 
 def sha(path):
@@ -86,7 +86,7 @@ def verify(output):
         check('confirmation_and_corrected_audit_recorded',decision.get('confirmation_run') is True and decision.get('authoritative_audit_version')==2)
     analysis=json.loads((output/'analysis_decision.json').read_text())
     check('analysis_and_execution_stop_decisions_agree',analysis['stop_modification_direction']==decision['stop'])
-    prior=ROOT/'current/l45_rollout_replan_exact_20261026/DELIVERY_SHA256.json'
+    prior=ROOT/'current/L系列实验输出/l45_rollout_replan_exact_20261026/DELIVERY_SHA256.json'
     old=json.loads(prior.read_text())['files']
     check('all_previous_delivery_files_preserved',all(sha(p)==h for p,h in old.items()))
     check('report_delivered',(output/'REPORT.md').exists())

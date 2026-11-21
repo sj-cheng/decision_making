@@ -80,7 +80,7 @@ def complete(output):
         lines += ['','### 独立审计器更正与保留记录','',
             '首版审计硬编码13维状态，且把限幅加法后的实际物理坐标要求为理想格点逐位相等，产生112条报错。完整公开状态模板与独立物理限幅递推已验证：这是审计器错误，未更改控制器、D或环境。',
             'v2从实际公开环境读取状态维数/活动索引，并逐位检查raw及physical_next=physical_current+clip(raw,-1,1)。保持D逐位重放、原动作/传感器/捕获检查，不增加坐标atol。5项有针对性审计回归测试通过。',
-            '原112条报错及首版停止决定原样保留；v2源码/测试/登记散列在首个确认结果前固定。见[更正原因](../../code/L45_SEARCH_VALUE_AUDIT_CORRECTION_20261026.md)、[登记与散列](corrective_audit_registration.json)、[原审计](development/postrun_audit.json)、[修正审计](development/postrun_audit_v2.json)、[审计回归测试](audit_unit_tests.json)。']
+            '原112条报错及首版停止决定原样保留；v2源码/测试/登记散列在首个确认结果前固定。见[更正原因](../../../文档/实验协议/L45_SEARCH_VALUE_AUDIT_CORRECTION_20261026.md)、[登记与散列](corrective_audit_registration.json)、[原审计](development/postrun_audit.json)、[修正审计](development/postrun_audit_v2.json)、[审计回归测试](audit_unit_tests.json)。']
     lines += ['','### 如何解释这一轮','',
         '对局沿用Example8单个活跃追捕者/单个活跃逃跑者接管设置：逃跑方轴向动作上限1.0，追捕方1.1或1.3；局部可见半径6，地图遮挡；物理步长1、原总时限80。真实对手为原RootPUCT，3000次模拟、深度100、无网络、可读全状态；追捕器只收局部公开观测。',
         'OL/FB是独立研究对照，不替换原始T/T+Geo或部署控制器，也不等同于完整NTE复现。两者唯一区别是模拟观测是否条件化规划信念、分裂树节点并影响后续动作；有限耗时下完成的模拟数会随反馈计算开销改变。',
@@ -90,10 +90,10 @@ def complete(output):
         '开发若触发预定停止，只能说该版本没有达到继续投入的筛选门槛；不能把开发置信区间称独立确认，也不能证明NTE/MCTS或未来神经扩展普遍无效。',
         '原50ms失败、上一轮rollout修正失败和强G结果保留；本轮没有训练、教师生成或部署修改。','',
         '### 复现与原始记录','',
-        '- [结果前方案](../../code/L45_SEARCH_VALUE_VALIDATION_20261026.md)、[冻结源码/参数](experiment.json)、[新确认银行散列](bank_frozen.json)。',
+        '- [结果前方案](../../../文档/实验协议/L45_SEARCH_VALUE_VALIDATION_20261026.md)、[冻结源码/参数](experiment.json)、[新确认银行散列](bank_frozen.json)。',
         '- [工程验收](preflight.json)、[精确执行复用前后](engineering_profile.json)、[12项测试记录](unit_tests.json)。',
         '- [运行日志](pipeline.log)、[开发继续门槛](development_gate.json)、[原执行决定](decision.json)。',
-        '- [独立solver](../../code/solvers/search_value_belief.py)、[概率模型](../../code/search_value_model.py)、[执行器](../../code/run_search_value_validation.py)。',
+        '- [独立solver](../../../code/solvers/search_value_belief.py)、[概率模型](../../../code/search_value_model.py)、[执行器](../../../code/run_search_value_validation.py)。',
         '- [交付核验](delivery_checks.json)、[完整文件散列](DELIVERY_SHA256.json)。','']
     if (output/'final_decision.json').exists():lines += ['- [最终权威执行决定](final_decision.json)。','']
     for stage in ('development','confirmation'):
@@ -103,5 +103,5 @@ def complete(output):
 
 
 if __name__=='__main__':
-    ap=argparse.ArgumentParser();ap.add_argument('--output',type=Path,default=ROOT/'current/l45_search_value_20261026')
+    ap=argparse.ArgumentParser();ap.add_argument('--output',type=Path,default=ROOT/'current/L系列实验输出/l45_search_value_20261026')
     complete(ap.parse_args().output)

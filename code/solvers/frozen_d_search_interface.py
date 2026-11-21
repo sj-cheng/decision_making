@@ -10,7 +10,7 @@ import numpy as np
 from numba import njit
 
 ROOT = Path(__file__).resolve().parents[2]
-FROZEN = ROOT/'current/l45_corner_turn_estimator_20261025/frozen_estimator'
+FROZEN = ROOT/'current/L系列实验输出/l45_corner_turn_estimator_20261025/frozen_estimator'
 spec = importlib.util.spec_from_file_location('accepted_d_loader', FROZEN/'loader.py')
 loader = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(loader)

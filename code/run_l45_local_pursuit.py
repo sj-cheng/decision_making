@@ -25,8 +25,8 @@ from solvers.local_pursuit import (Controller,PublicMap,Observation,warmup,legal
 torch.set_num_threads(1)
 ROOT = Path(__file__).resolve().parent.parent
 CODE = ROOT/'code'
-DEFAULT_OUTPUT = ROOT/'current/l45_local_pursuit_20261024'
-SMOKE_OUTPUT = ROOT/'current/l45_local_pursuit_smoke_20261024'
+DEFAULT_OUTPUT = ROOT/'current/L系列实验输出/l45_local_pursuit_20261024'
+SMOKE_OUTPUT = ROOT/'current/L系列实验输出/l45_local_pursuit_smoke_20261024'
 METHODS = ('L','G','T','V','O')
 MAPS = dict(open=[],corner=[[[-1.5,1.5],[-3.5,3.5]]],
             multipath=[[[-4.,-2.],[-4.5,4.5]],[[2.,4.],[-4.5,4.5]]])

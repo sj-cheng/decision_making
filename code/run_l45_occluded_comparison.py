@@ -24,8 +24,8 @@ from solvers.local_pursuit import safe,warmup
 torch.set_num_threads(1)
 
 ROOT=Path(__file__).resolve().parent.parent
-SOURCE=ROOT/'current/l45_occlusion_scenarios_20261025'
-OUTPUT=ROOT/'current/l45_occluded_comparison_20261025'
+SOURCE=ROOT/'current/L系列实验输出/l45_occlusion_scenarios_20261025'
+OUTPUT=ROOT/'current/L系列实验输出/l45_occluded_comparison_20261025'
 METHODS=('L','G','T','V')
 
 

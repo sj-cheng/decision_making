@@ -27,8 +27,8 @@ o, s, f = h.o, h.s, h.f
 lock_json, locked_read = h.lock_json, h.locked_read
 ROOT, CODE = o.ROOT, o.CODE
 SOURCE = h.DEFAULT_OUTPUT
-DEFAULT = ROOT/'current/l45_root_action_audit_20261024'
-SMOKE = ROOT/'current/l45_root_action_audit_smoke_20261024'
+DEFAULT = ROOT/'current/L系列实验输出/l45_root_action_audit_20261024'
+SMOKE = ROOT/'current/L系列实验输出/l45_root_action_audit_smoke_20261024'
 
 
 def config(args):

@@ -26,8 +26,8 @@ import confirm_l45_value_off as v
 o, f, previous = v.o, v.followup, v.previous
 ROOT = o.ROOT
 SOURCE = v.DEFAULT_OUTPUT
-DEFAULT_OUTPUT = ROOT / 'current/l45_strong_opponent_20261023'
-SMOKE_OUTPUT = ROOT / 'current/l45_strong_opponent_smoke_20261023'
+DEFAULT_OUTPUT = ROOT / 'current/L系列实验输出/l45_strong_opponent_20261023'
+SMOKE_OUTPUT = ROOT / 'current/L系列实验输出/l45_strong_opponent_smoke_20261023'
 ARMS, SEEDS = ('A', 'B'), (0, 1, 2)
 CONTROL, BASELINE = 'old0:novalue', 'baseline:novalue'
 SPLITS = dict(validation_four=('four', 60), validation_none=('none', 30),
@@ -179,7 +179,7 @@ def prepare(args):
     lock_json(out / 'scenario_independence.json', dict(
         previous_physical_scenes=historical_count, new_scenes=len(used)-historical_count,
         overlap=0, history_files=len(files), paired_A_B_training_is_only_shared_exception=True,
-        scope='All recoverable current/l45*/**/scenarios.json and **/rollouts/*.json, including smoke, startup archives and actual rollouts; not all NTE pretraining states.'))
+        scope='All recoverable current/L系列实验输出/l45*/**/scenarios.json and **/rollouts/*.json, including smoke, startup archives and actual rollouts; not all NTE pretraining states.'))
     verify(args)
     return banks
 

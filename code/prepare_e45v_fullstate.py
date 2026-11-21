@@ -7,8 +7,8 @@ from pathlib import Path
 os.environ.setdefault("MPLBACKEND", "Agg")
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "current/e45v_fullstate_hasac_20261103"
-UPSTREAM = ROOT / "current/e45u_official_hasac_calibration_20261102/official_source"
+OUT = ROOT / "current/E系列实验输出/e45v_fullstate_hasac_20261103"
+UPSTREAM = ROOT / "current/E系列实验输出/e45u_official_hasac_calibration_20261102/official_source"
 
 
 def read(p): return json.loads(Path(p).read_text())

@@ -10,7 +10,7 @@ from learning.e45x_event_diagnostic import (FrozenActor,prepare_public,initial_w
 from solvers.e45_team_adapter import public_observation
 from corner_estimator_scenarios import original_model
 
-W=Path(__file__).resolve().parents[2]/'current/e45w_joint_ppo_and_planning_20261103'
+W=Path(__file__).resolve().parents[2]/'current/E系列实验输出/e45w_joint_ppo_and_planning_20261103'
 
 
 @pytest.fixture(scope='module')

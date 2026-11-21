@@ -3,7 +3,7 @@ import datetime
 import json
 from pathlib import Path
 
-OUT = Path(__file__).resolve().parents[1] / "current/e45w_joint_ppo_and_planning_20261103"
+OUT = Path(__file__).resolve().parents[1] / "current/E系列实验输出/e45w_joint_ppo_and_planning_20261103"
 
 
 def read(path):

@@ -8,7 +8,7 @@ import run_e45o_hasac_demonstration as o
 
 if __name__=='__main__':
     root=o.OUT;root.mkdir(parents=True,exist_ok=True)
-    smoke=o.ROOT/'current/e45o_hasac_demonstration_smoke_20261101'
+    smoke=o.ROOT/'current/E系列实验输出/e45o_hasac_demonstration_smoke_20261101'
     o.verify(smoke)
     audit=o.j.read(smoke/'smoke_audit.json')
     assert audit['passed'] and len(audit['runs'])==4

@@ -21,7 +21,7 @@ import train_l45_ppo as o
 import confirm_l45_final_search as previous
 
 ROOT = o.ROOT
-DEFAULT_OUTPUT = ROOT/'current/l45_ppo_followup_20261023'
+DEFAULT_OUTPUT = ROOT/'current/L系列实验输出/l45_ppo_followup_20261023'
 SOURCE = previous.DEFAULT_SOURCE
 FINAL_SOURCE = previous.DEFAULT_OUTPUT
 SEEDS = (0,1,2)

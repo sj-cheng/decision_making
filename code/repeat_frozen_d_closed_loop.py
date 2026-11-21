@@ -9,7 +9,7 @@ from audit_frozen_d_search_interface import warmup
 
 ROOT=original.ROOT
 SOURCE=original.OUT
-OUT=ROOT/'current/l45_search_diagnosis_repeat_20261026'
+OUT=ROOT/'current/L系列实验输出/l45_search_diagnosis_repeat_20261026'
 
 
 def scientific_trace(trace):
@@ -31,7 +31,7 @@ def main():
     baseline=json.loads((SOURCE/'experiment.json').read_text())
     assert all(original.sha(p)==h for p,h in (baseline['sources_and_inputs']|baseline['protected_before']).items())
     requests=original.tasks('confirmation')
-    sources=[Path(__file__),ROOT/'code/L45_SEARCH_DIAGNOSIS_REPEAT_20261026.md']
+    sources=[Path(__file__),ROOT/'文档/实验协议/L45_SEARCH_DIAGNOSIS_REPEAT_20261026.md']
     sources += [ROOT/'code/diagnose_frozen_d_root_rollout.py']
     config=dict(role='exact repeat of previous closed-loop confirmation; not a new independent test',
         games=144,public_groups=24,seeds_changed=False,controller_changed=False,estimator_changed=False,

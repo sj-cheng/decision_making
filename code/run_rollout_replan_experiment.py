@@ -14,7 +14,7 @@ from verify_l45_occlusion_scenarios import verify_case
 
 ROOT=base.ROOT
 SOURCE=base.OUT
-OUT=ROOT/'current/l45_rollout_replan_20261026'
+OUT=ROOT/'current/L系列实验输出/l45_rollout_replan_20261026'
 METHODS=('G','T','T+Geo','T-R','T+Geo-R')
 MAIN=(('T-R','T'),('T+Geo-R','T+Geo'),('T-R','G'),('T+Geo-R','G'))
 

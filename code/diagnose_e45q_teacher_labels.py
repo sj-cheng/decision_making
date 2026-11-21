@@ -17,8 +17,8 @@ from pathlib import Path
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
-O = ROOT / 'current/e45o_hasac_demonstration_20261101'
-Q = ROOT / 'current/e45q_corrective_hasac_20261101'
+O = ROOT / 'current/E系列实验输出/e45o_hasac_demonstration_20261101'
+Q = ROOT / 'current/E系列实验输出/e45q_corrective_hasac_20261101'
 LABEL_KEYS = ('obs', 'action', 'active')
 
 
@@ -300,7 +300,7 @@ def fixed_search(audit, output):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--output', type=Path,
-        default=ROOT/'current/e45q_teacher_label_audit_20261102')
+        default=ROOT/'current/E系列实验输出/e45q_teacher_label_audit_20261102')
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=False)
     started = time.perf_counter()

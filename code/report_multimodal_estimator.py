@@ -5,7 +5,7 @@ import json
 from audit_l45_rollout_reliability import save
 
 ROOT=Path(__file__).resolve().parent.parent
-OUT=ROOT/'current/l45_multimodal_estimator_20261025'
+OUT=ROOT/'current/L系列实验输出/l45_multimodal_estimator_20261025'
 
 
 def main():
@@ -75,7 +75,7 @@ def main():
         '## 7. 图、数据与复现\n\n',
         '![开发固定接管状态](figures/estimator_handoff_comparison.png)\n\n',
         '每类图例按原开发清单首次出现顺序选择，未按效果挑图；红星只用于事后评分。蓝色为加权支持、绿色为64导出样本。\n\n',
-        '- [冻结方案](../../code/L45_MULTIMODAL_ESTIMATION.md) · [实现](../../code/solvers/multimodal_estimator.py) · [测试](../../code/tests/test_multimodal_estimator.py)\n',
+        '- [冻结方案](../../../文档/实验协议/L45_MULTIMODAL_ESTIMATION.md) · [实现](../../../code/solvers/multimodal_estimator.py) · [测试](../../../code/tests/test_multimodal_estimator.py)\n',
         '- [开发统计](development_results.json) · [确认统计](confirmation_results.json) · [验收决定](decision.json)\n',
         '- [原因诊断](diagnosis_summary.json) · [逐前缀诊断](diagnosis_prefix_rows.json) · [真实运动独立审计](diagnosis_true_motion_audit.json)\n',
         '- [区域审计](region_audit.json) · [预设拓扑分项](family_results.json) · [初始化/池化指标](timing_and_pooling.json) · [冻结参数/源码](experiment.json)\n',

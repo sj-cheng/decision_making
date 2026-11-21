@@ -27,8 +27,8 @@ from learning.e45b_joint_network import KINDS,Network
 from run_e44_parallel import choose_cpus
 
 ROOT=base.ROOT
-OLD=ROOT/'current/e45b_role_free_joint_nte_20261027'
-OUT=ROOT/'current/e45c_budget_scaling_20261028'
+OLD=ROOT/'current/E系列实验输出/e45b_role_free_joint_nte_20261027'
+OUT=ROOT/'current/E系列实验输出/e45c_budget_scaling_20261028'
 BASE_SEED=945320261028
 SEEDS=(17,29,43)
 DOSES=('x1','x5','x20')
@@ -142,7 +142,7 @@ def prepare():
         dose_scope='new maps/episodes/replay and optimizer updates at fixed epochs; not pure data scaling at fixed updates',
         architecture={k:sum(p.numel() for p in Network(k).parameters()) for k in KINDS})
     save(OUT/'experiment.json',c)
-    (OUT/'PROTOCOL.md').write_bytes((ROOT/'code/E45C_BUDGET_PROTOCOL_20261028.md').read_bytes())
+    (OUT/'PROTOCOL.md').write_bytes((ROOT/'文档/实验协议/E45C_BUDGET_PROTOCOL_20261028.md').read_bytes())
     for relative in SOURCES:
         path=OUT/'source_snapshot'/relative;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes((ROOT/'code'/relative).read_bytes())
     for dose in DOSES:

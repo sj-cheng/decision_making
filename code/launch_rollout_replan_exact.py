@@ -5,7 +5,7 @@ import run_rollout_replan_experiment as experiment
 import solvers.rollout_geometry_exact as fast
 
 OLD_OUT=experiment.OUT
-OUT=experiment.ROOT/'current/l45_rollout_replan_exact_20261026'
+OUT=experiment.ROOT/'current/L系列实验输出/l45_rollout_replan_exact_20261026'
 _freeze=experiment.freeze
 _preflight=experiment.preflight
 _prepare=experiment.prepare

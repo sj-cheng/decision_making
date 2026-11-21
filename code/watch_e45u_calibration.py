@@ -3,7 +3,7 @@ import datetime
 import json
 from pathlib import Path
 
-out = Path(__file__).resolve().parents[1] / "current/e45u_official_hasac_calibration_20261102"
+out = Path(__file__).resolve().parents[1] / "current/E系列实验输出/e45u_official_hasac_calibration_20261102"
 print("E45-U | official HASAC native continuous MPE | tmux:train")
 print(datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8))).isoformat(timespec="seconds"))
 print("Full recipe: 20 envs; 10M post-warmup team transitions / seed; UTD=0.05")

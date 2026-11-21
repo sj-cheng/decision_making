@@ -26,8 +26,8 @@ from solvers.frozen_d_search_interface import route
 from e45c_capture_audit import audit_simulated
 
 ROOT=x.ROOT
-X=ROOT/'current/e45x_first_capture_diagnostic_20261104'
-OUT=ROOT/'current/e45y_compute_allocation_20261104'
+X=ROOT/'current/E系列实验输出/e45x_first_capture_diagnostic_20261104'
+OUT=ROOT/'current/E系列实验输出/e45y_compute_allocation_20261104'
 LOW=50.;HIGH=200.
 
 
@@ -215,7 +215,7 @@ def prepare(output):
         for rows in cells.values():rows.sort(key=lambda r:r['stream'])
     x.write(output/'references.json',reference);x.write(output/'input_manifest.json',inputs)
     paths=[Path(__file__),ROOT/'code/tests/test_e45y_compute_allocation.py',
-        ROOT/'code/watch_e45y_compute_allocation.py',ROOT/'code/E45Y_COMPUTE_ALLOCATION_PROTOCOL_20261104.md']
+        ROOT/'code/watch_e45y_compute_allocation.py',ROOT/'文档/实验协议/E45Y_COMPUTE_ALLOCATION_PROTOCOL_20261104.md']
     scientific=dict(name='E45-Y',source_hashes={str(p):x.sha(p) for p in paths}|cfg['source_hashes'],
         input_manifest_sha256=x.sha(output/'input_manifest.json'),references_sha256=x.sha(output/'references.json'),
         actor_frozen=True,new_policy_training=False,physical_gpu=3,search_repeats=4,

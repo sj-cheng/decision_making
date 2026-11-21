@@ -16,7 +16,7 @@ from audit_frozen_d_search_interface import observation
 from solvers.frozen_d_search_interface import loader
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT/'current/l45_nte_d_local_baseline_20261027'
+OUT = ROOT/'current/L系列实验输出/l45_nte_d_local_baseline_20261027'
 
 
 def read(path):

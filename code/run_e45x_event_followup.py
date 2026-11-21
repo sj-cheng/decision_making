@@ -21,7 +21,7 @@ from learning.e45x_event_diagnostic import (EventController,ARMS,seed,ETA,TIME_C
 from learning.e45w_support_recovery import TeamBelief
 from e45c_capture_audit import audit_simulated
 
-OUT=base.ROOT/'current/e45x_first_capture_diagnostic_20261104'
+OUT=base.ROOT/'current/E系列实验输出/e45x_first_capture_diagnostic_20261104'
 
 
 class Rollout16(EventController):

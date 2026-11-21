@@ -23,9 +23,9 @@ from learning.candidate_prior import Network, mixed_prior, geometry_scores
 from solvers.frozen_d_search_interface import loader
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT/'current/l45_candidate_prior_30e_20261026'
+OUT = ROOT/'current/L系列实验输出/l45_candidate_prior_30e_20261026'
 SEED = 92020261026
-PROTOCOL = ROOT/'code/L45_CANDIDATE_PRIOR_30E_20261026.md'
+PROTOCOL = ROOT/'文档/实验协议/L45_CANDIDATE_PRIOR_30E_20261026.md'
 pilot.OUT, pilot.BASE_SEED, pilot.EPOCHS = OUT, SEED, 30
 START = time.monotonic()
 
@@ -83,7 +83,7 @@ def configure():
         previous_input_bank_counts=previous_counts, test_outcomes_read=False,
         split_unit='entire map instance and all histories/worlds'))
     save(OUT/'bank_acceptance.json', dict(passed=True, geometry_only=True, records=checks))
-    old = ROOT/'current/l45_candidate_prior_train_20261026'
+    old = ROOT/'current/L系列实验输出/l45_candidate_prior_train_20261026'
     old_config = json.loads((old/'experiment.json').read_text())
     sources = dict(old_config['source_hashes'])
     for name in ('run_candidate_prior_30e.py', 'L45_CANDIDATE_PRIOR_30E_20261026.md',
@@ -91,7 +91,7 @@ def configure():
         path = ROOT/'code'/name
         sources[str(path)] = sha(path)
     protected = dict(old_config['protected_hashes'])
-    for folder in (old, ROOT/'current/l45_search_value_20261026'):
+    for folder in (old, ROOT/'current/L系列实验输出/l45_search_value_20261026'):
         # Preserve all existing delivered artifacts, not only the old conclusion.
         for path in folder.rglob('*'):
             if path.is_file():

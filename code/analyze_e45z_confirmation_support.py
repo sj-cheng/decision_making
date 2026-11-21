@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 
 ROOT=Path(__file__).resolve().parents[1]
-OUT=ROOT/'current/e45z_independent_confirmation_20261104'
+OUT=ROOT/'current/E系列实验输出/e45z_independent_confirmation_20261104'
 
 
 def sha(p):return hashlib.sha256(Path(p).read_bytes()).hexdigest()

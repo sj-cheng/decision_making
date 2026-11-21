@@ -20,7 +20,7 @@ import numpy as np
 import torch
 
 ROOT = Path(__file__).resolve().parents[2]
-FROZEN = ROOT / "current/e45u_official_hasac_calibration_20261102/official_source"
+FROZEN = ROOT / "current/E系列实验输出/e45u_official_hasac_calibration_20261102/official_source"
 sys.path.insert(0, str(FROZEN))
 
 from harl.algorithms.actors.hasac import HASAC

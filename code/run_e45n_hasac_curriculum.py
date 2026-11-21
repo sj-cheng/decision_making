@@ -22,7 +22,7 @@ import run_e45m_hasac_task as m
 
 j=m.j
 ROOT=m.ROOT
-OUT=ROOT/'current/e45n_hasac_curriculum_20261101'
+OUT=ROOT/'current/E系列实验输出/e45n_hasac_curriculum_20261101'
 PHASES=(dict(name='static_visible',variant='static',opponent='fixed_D_kernel',steps=20000),
         dict(name='moving_visible',variant='moving',opponent='fixed_D_kernel',steps=30000),
         dict(name='hidden_root',variant=None,opponent='rootpuct',steps=100000))
@@ -45,7 +45,7 @@ def register(root,smoke=False):
     entries=source['entries'][:1] if smoke else source['entries']
     phases=[p|dict(steps=1 if smoke else p['steps']) for p in PHASES]
     files=[Path(__file__).resolve(),ROOT/'code/tests/test_e45n_hasac_curriculum.py',
-           ROOT/'code/E45N_HASAC_CURRICULUM_PROTOCOL_20261101.md']
+           ROOT/'文档/实验协议/E45N_HASAC_CURRICULUM_PROTOCOL_20261101.md']
     cfg={k:v for k,v in source.items() if k not in ('source_hashes','protected_hashes','bank_hashes')}
     protected=dict(source['source_hashes']);protected.update(source['protected_hashes'])
     bank={phase_entry(e,p)['path']:j.sha(phase_entry(e,p)['path']) for e in entries for p in phases}

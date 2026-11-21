@@ -31,9 +31,9 @@ from e45f_scenarios import ID_FAMILIES, OOD_FAMILIES, new_id_case, shifted_case,
 from e45g_training_acceleration import public_geometry_cache, parallel_collect
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / 'current/e45g_rl_benchmark_20261030'
-FROOT = ROOT / 'current/e45f_generalization_benchmark_20261029'
-CROOT = ROOT / 'current/e45c_budget_scaling_20261028'
+OUT = ROOT / 'current/E系列实验输出/e45g_rl_benchmark_20261030'
+FROOT = ROOT / 'current/E系列实验输出/e45f_generalization_benchmark_20261029'
+CROOT = ROOT / 'current/E系列实验输出/e45c_budget_scaling_20261028'
 SEEDS = (17, 29, 43)
 RL = ('MAPPO', 'IPPO')
 ARMS = ('SINGLE_PRIOR', 'MAPPO', 'IPPO', 'SINGLE_DIRECT', 'AG', 'IG', 'U', 'GEOM_SEARCH')
@@ -177,7 +177,7 @@ def prepare(smoke=False, steps=2_000_000):
         train = [next(r for r in train if r['family'] == f) for f in ID_FAMILIES]
         validation = [next(r for r in validation if r['family'] == f) for f in ID_FAMILIES]
     known = set()
-    for folder in (CROOT, FROOT, ROOT / 'current/e45d_prior_correlation_20261029', ROOT / 'current/e45b_role_free_joint_nte_20261027'):
+    for folder in (CROOT, FROOT, ROOT / 'current/E系列实验输出/e45d_prior_correlation_20261029', ROOT / 'current/E系列实验输出/e45b_role_free_joint_nte_20261027'):
         for path in (folder / 'bank').glob('*/*.json'):
             packet = read(path)
             if 'map' in packet:
@@ -235,7 +235,7 @@ def prepare(smoke=False, steps=2_000_000):
     config['architecture'] = dict(actor_parameters=sum(p.numel() for p in Actor().parameters()),
         critic_parameters={kind:sum(p.numel() for p in Critic(kind).parameters()) for kind in RL})
     save(OUT / 'experiment.json', config)
-    (OUT / 'PROTOCOL.md').write_bytes((ROOT / 'code/E45G_RL_BENCHMARK_PROTOCOL_20261030.md').read_bytes())
+    (OUT / 'PROTOCOL.md').write_bytes((ROOT / '文档/实验协议/E45G_RL_BENCHMARK_PROTOCOL_20261030.md').read_bytes())
     for name in SOURCES:
         dest = OUT / 'source_snapshot' / name; dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_bytes((ROOT/'code'/name).read_bytes())
@@ -659,7 +659,7 @@ def supplement_report(extra):
     if config['smoke']:
         (OUT/'f_supplement/REPORT.md').write_text('# 工程smoke\n\n24条两步前缀，不作性能结论。\n')
         return
-    source=ROOT/'current/e45f_generalization_benchmark_20261029_support_repaired/results.json'
+    source=ROOT/'current/E系列实验输出/e45f_generalization_benchmark_20261029_support_repaired/results.json'
     reference=[r for r in read(source) if r['method'].rstrip('0123456789') in ARMS]
     evidence=[]
     for row in reference:
@@ -781,7 +781,7 @@ def update_ledger(decision):
     path=ROOT/'Git提交后实验完整汇总_20261025.md';text=path.read_text();anchor='<!-- E45G_STATUS -->'
     note=(anchor+'\n> **E45-G同条件RL benchmark：** '+decision['status']+'；MAPPO/IPPO各3训练种子，'
           +f'新独立评测{decision["fresh_tasks"]}局、原F追加{decision["supplement_tasks"]}局、无效{decision["invalid"]}局。'
-          +'完整数据见[本轮报告](current/e45g_rl_benchmark_20261030/REPORT.md)。\n<!-- /E45G_STATUS -->\n')
+          +'完整数据见[本轮报告](current/E系列实验输出/e45g_rl_benchmark_20261030/REPORT.md)。\n<!-- /E45G_STATUS -->\n')
     import re
     if anchor in text:text=re.sub(r'<!-- E45G_STATUS -->.*?<!-- /E45G_STATUS -->\n',lambda _:note,text,flags=re.S)
     else:text=text.replace('\n\n','\n\n'+note+'\n',1)

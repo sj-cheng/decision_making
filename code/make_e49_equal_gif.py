@@ -16,7 +16,7 @@ if Path(_FONT).exists():
 plt.rcParams['axes.unicode_minus'] = False
 
 ROOT = Path('/data2/sjc/decision_making')
-OUT = ROOT/'current/e49_scatter_equal_20261110'
+OUT = ROOT/'current/E系列实验输出/e49_scatter_equal_20261110'
 EP = OUT/'episodes/equal'
 METHOD_ORDER = ['IG','AG','RouteAPF','MAPPO_RouteAPF','GEOM_SEARCH','SINGLE_PRIOR','A1','A2','A3','A4','A5']
 DISPLAY = {'MAPPO_RouteAPF':'MAPPO+RouteAPF','GEOM_SEARCH':'GEOM_SEARCH','SINGLE_PRIOR':'SINGLE_PRIOR'}

@@ -8,7 +8,7 @@ from solvers.e45f_geometry_capacity import geometric_candidates_capacity
 from e45c_belief_diagnostics import RecordedTeamBelief,install
 
 ROOT=Path(__file__).resolve().parents[2]
-FOLDER=ROOT/'current/e45f_generalization_benchmark_20261029'
+FOLDER=ROOT/'current/E系列实验输出/e45f_generalization_benchmark_20261029'
 
 
 class GeometryCapacityTests(unittest.TestCase):
@@ -34,7 +34,7 @@ class GeometryCapacityTests(unittest.TestCase):
             else:self.assertEqual(failures,0)
 
     def test_original_maps_have_exactly_identical_candidates_and_selected_action(self):
-        manifest=json.loads((ROOT/'current/e45c_budget_scaling_20261028/bank/manifest.json').read_text())
+        manifest=json.loads((ROOT/'current/E系列实验输出/e45c_budget_scaling_20261028/bank/manifest.json').read_text())
         for family in ('long_wall','wall_corner','multi_route'):
             for entry in [e for e in manifest['entries'] if e['split']=='validation' and e['family']==family][:2]:
                 self.compare_case(json.loads(Path(entry['path']).read_text()),317)

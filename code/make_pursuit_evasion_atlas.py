@@ -43,7 +43,7 @@ def modern_job(job):
     if target.exists(): return str(target)
     import importlib.util
     if job['method'].startswith('W_') and importlib.util.find_spec('gymnasium') is None:
-        python = ROOT/'current/e45w_joint_ppo_and_planning_20261103/venv/bin/python'
+        python = ROOT/'current/E系列实验输出/e45w_joint_ppo_and_planning_20261103/venv/bin/python'
         subprocess.run([str(python),'-u',__file__,'one','--case',job['case']['path'],
                         '--method',job['method']],check=True,timeout=300)
         return str(target)
@@ -58,7 +58,7 @@ def modern_job(job):
     if method.startswith('W_'):
         from learning.e45w_joint_env import PublicJointPursuitEnv
         from learning.e45w_joint_ppo import StructuredJointPolicy
-        path = ROOT/f'current/e45w_joint_ppo_and_planning_20261103/training/{method[-1]}_17/selected_actor.pt'
+        path = ROOT/f'current/E系列实验输出/e45w_joint_ppo_and_planning_20261103/training/{method[-1]}_17/selected_actor.pt'
         env = PublicJointPursuitEnv(dict(case_paths=[entry['path']], record_trace=True,
                belief_evidence_dir=str(OUT/'belief_failures')))
         policy = StructuredJointPolicy(env.observation_space, env.action_space, lambda _:0., initialization_seed=0)

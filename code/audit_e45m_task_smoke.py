@@ -11,7 +11,7 @@ from learning.e45g_ppo import safe_action
 
 def main():
     torch.set_num_threads(1)
-    root=m.ROOT/'current/e45m_hasac_task_smoke_20261101'
+    root=m.ROOT/'current/E系列实验输出/e45m_hasac_task_smoke_20261101'
     assert m.j.read(root/'decision.json')['status']=='complete'
     cfg=m.verify(root);reports=[]
     for folder in sorted((root/'runs').iterdir()):

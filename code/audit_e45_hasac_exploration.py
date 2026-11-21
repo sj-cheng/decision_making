@@ -65,7 +65,7 @@ def main():
             out['checkpoints'][str(steps)]=dict(metadata=metadata,statistics=actor_stats(actors,obs,visible))
         results[folder.name]=out
     assert len(results)==2
-    target=m.ROOT/'current/e45_marl_macro_audit_20261101/HASAC_exploration_20k.json'
+    target=m.ROOT/'current/E系列实验输出/e45_marl_macro_audit_20261101/HASAC_exploration_20k.json'
     m.j.save(target,dict(results=results,source_sha256=m.j.sha(Path(__file__)),training_unchanged=True))
     for name,r in results.items():
         print(name,'probe frames',r['frames'],'visible',r['visible_frames'],flush=True)

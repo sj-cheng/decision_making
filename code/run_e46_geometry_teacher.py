@@ -36,7 +36,7 @@ from learning.e46_geometry_teacher import (OLD_MODELS, MixedController, PoolCont
     draw_geometry, draw_random)
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT = ROOT/'current/e46_geometry_teacher_20261105'
+DEFAULT = ROOT/'current/E系列实验输出/e46_geometry_teacher_20261105'
 SEEDS = (17,29,43)
 OPPONENTS = ('fixed_D_kernel','rootpuct')
 BASE = 1460520261105
@@ -229,7 +229,7 @@ def prepare(out,smoke=False):
         train_configurations=dict(L1=['single','OLD_JOINT'],L2=['single','GEOM'],
                                   L3=['joint','OLD_JOINT'],L4=['joint','GEOM'],L5=['rank','POOL_UNIFORM']),
         physical_gpu_preference=[3,2,1],forbidden_gpu=[0],minimum_reserved_logical_cpus=20,
-        protocol_sha256=source_files[str(ROOT/'code/E46_GEOMETRY_TEACHER_PROTOCOL_20261105.md')])
+        protocol_sha256=source_files[str(ROOT/'文档/实验协议/E46_GEOMETRY_TEACHER_PROTOCOL_20261105.md')])
     write(out/'experiment.json',cfg)
     write(out/'bank/manifest.json',dict(entries=entries))
     write(out/'preparation_progress.json',dict(stage='complete',maps=len(entries),time=stamp()))

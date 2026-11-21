@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "current/e45u_official_hasac_calibration_20261102"
+OUT = ROOT / "current/E系列实验输出/e45u_official_hasac_calibration_20261102"
 
 
 def main():

@@ -18,8 +18,8 @@ from solvers.frozen_d_search_interface import (
 from estimator_audit_geometry import point_legal, blocked
 
 ROOT=Path(__file__).resolve().parent.parent
-SOURCE=ROOT/'current/l45_corner_turn_estimator_20261025'
-OUTPUT=ROOT/'current/l45_weighted_search_interface_v2_20261026'
+SOURCE=ROOT/'current/L系列实验输出/l45_corner_turn_estimator_20261025'
+OUTPUT=ROOT/'current/L系列实验输出/l45_weighted_search_interface_v2_20261026'
 
 
 def sha(path):
@@ -161,7 +161,7 @@ def freeze(output):
         public_groups=24,paired_worlds_used=False,stage='engineering_development_only',
         no_efficacy_games=True,no_new_efficacy_confirmation_consumed=True,
         revision='own-motion boxes inflated1e-6; sensor slab parameter tolerance1e-12; frozen D unchanged',
-        preceding_failure_results_sha256=sha(ROOT/'current/l45_weighted_search_interface_20261026/results.json'),
+        preceding_failure_results_sha256=sha(ROOT/'current/L系列实验输出/l45_weighted_search_interface_20261026/results.json'),
         budget_ms=50.,deadline_reserve_ms=2.,planning_depth=8,simulation_cap=1000,
         probability_draws=200000,probability_tolerance='6 binomial SD + 2/N per bin',
         methods_rotated=True,threads=1,training=False)

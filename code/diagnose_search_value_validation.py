@@ -17,7 +17,7 @@ from pathlib import Path
 import statistics
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_OUTPUT = ROOT/'current/l45_search_value_20261026'
+DEFAULT_OUTPUT = ROOT/'current/L系列实验输出/l45_search_value_20261026'
 METHODS = ('G', 'OL200', 'FB200', 'OLH', 'FBH')
 OPPONENTS = ('matched', 'rootpuct')
 STAGE_GROUPS = {'development': 6, 'confirmation': 12}

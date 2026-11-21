@@ -20,7 +20,7 @@ from problems.problem import get_problem
 from solvers.local_pursuit import PublicMap
 
 ROOT=Path(__file__).resolve().parent.parent
-DEFAULT=ROOT/'current/l45_occlusion_scenarios_20261025'
+DEFAULT=ROOT/'current/L系列实验输出/l45_occlusion_scenarios_20261025'
 FAMILIES=('long_wall','wall_corner','multi_route')
 
 
@@ -206,7 +206,7 @@ def all_stages(output):
         if not all(sha(output/name)==value for name,value in lock['files'].items()):raise ValueError('Frozen scene artifact changed')
         print('Existing frozen bank verified; no regeneration');return
     output.mkdir(parents=True,exist_ok=True)
-    before={str(path):sha(path) for path in (ROOT/'code/solvers/local_pursuit.py',ROOT/'code/run_l45_local_pursuit.py',ROOT/'code/problems/example8.py',ROOT/'current/l45_local_pursuit_20261024/results.json')}
+    before={str(path):sha(path) for path in (ROOT/'code/solvers/local_pursuit.py',ROOT/'code/run_l45_local_pursuit.py',ROOT/'code/problems/example8.py',ROOT/'current/L系列实验输出/l45_local_pursuit_20261024/results.json')}
     pilot=output/'pilot';entries=[]
     for fi,family in enumerate(FAMILIES):
         for H in (4,6):

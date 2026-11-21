@@ -25,7 +25,7 @@ from e45b_sensor_audit import visible_batch
 from run_e44_parallel import choose_cpus
 
 ROOT=Path(__file__).resolve().parents[1]
-OUT=ROOT/'current/e45b_role_free_joint_nte_20261027'
+OUT=ROOT/'current/E系列实验输出/e45b_role_free_joint_nte_20261027'
 BASE_SEED=945220261027
 SEEDS=(17,29,43)
 OPPONENTS=('fixed_D_kernel','rootpuct')
@@ -65,7 +65,7 @@ def model_file(kind,seed,round_,suffix='.npz'):
 def prepare():
     if (OUT/'experiment.json').exists():return verify()
     OUT.mkdir(parents=True,exist_ok=True);rows=[];known=set()
-    for old in (ROOT/'current/e44_branch_conditioned_nte_20261027/bank').rglob('controller_inputs/*.json'):
+    for old in (ROOT/'current/E系列实验输出/e44_branch_conditioned_nte_20261027/bank').rglob('controller_inputs/*.json'):
         known.add(hashlib.sha256(str(read(old)['map']).encode()).hexdigest())
     namespace=int(hashlib.sha256(OUT.name.encode()).hexdigest()[:8],16) if SMOKE else 0
     for split,n in (('train',1 if SMOKE else 8),('validation',1 if SMOKE else 2),('test',1 if SMOKE else 6)):
@@ -76,7 +76,7 @@ def prepare():
                 known.add(digest);path=OUT/'bank'/split/(case['id']+'.json');save(path,case)
                 rows.append(dict(id=case['id'],path=str(path),family=family,pattern=case['pattern'],split=split))
     save(OUT/'bank/manifest.json',dict(entries=rows,selection='geometry and causal history only; no algorithm outcomes'))
-    older=read(ROOT/'current/e45_2v2_pilot_20261027/experiment.json')
+    older=read(ROOT/'current/E系列实验输出/e45_2v2_pilot_20261027/experiment.json')
     protected=older['source_hashes']|older['protected_hashes']
     for name in ('experiment.json','decision.json','results.json','PROTOCOL.md'):
         for folder in ('e44_branch_conditioned_nte_20261027','e45_2v2_pilot_20261027'):
@@ -107,7 +107,7 @@ def prepare():
         source_hashes={str(ROOT/'code'/s):sha(ROOT/'code'/s) for s in SOURCE_NAMES},protected_hashes=protected,
         bank_hashes={str(p):sha(p) for p in (OUT/'bank').rglob('*.json')})
     save(OUT/'experiment.json',config)
-    (OUT/'PROTOCOL.md').write_bytes((ROOT/'code/E45B_ROLE_FREE_PROTOCOL_20261027.md').read_bytes())
+    (OUT/'PROTOCOL.md').write_bytes((ROOT/'文档/实验协议/E45B_ROLE_FREE_PROTOCOL_20261027.md').read_bytes())
     for s in SOURCE_NAMES:
         p=OUT/'source_snapshot'/s;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes((ROOT/'code'/s).read_bytes())
     emit(stage='registered',rounds=config['rounds'],evaluation_games=config['evaluation_games'])

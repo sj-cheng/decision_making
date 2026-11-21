@@ -23,8 +23,8 @@ from solvers.aq_once import AQOnceSolver
 o, s, v, f = a.o, a.s, a.h.v, a.f
 ROOT = o.ROOT
 SOURCE = a.DEFAULT
-DEFAULT_OUTPUT = ROOT/'current/l45_aq_once_20261024'
-SMOKE_OUTPUT = ROOT/'current/l45_aq_once_smoke_20261024'
+DEFAULT_OUTPUT = ROOT/'current/L系列实验输出/l45_aq_once_20261024'
+SMOKE_OUTPUT = ROOT/'current/L系列实验输出/l45_aq_once_smoke_20261024'
 lock_json, locked_read = v.lock_json, v.locked_read
 SPLITS = dict(validation_four=('four',100), validation_none=('none',50),
     confirm_four=('four',400), confirm_none=('none',100), guard_four=('four',100),

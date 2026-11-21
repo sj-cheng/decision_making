@@ -21,8 +21,8 @@ torch.set_num_threads(1)
 o,s=previous.o,previous.s
 ROOT,CODE=o.ROOT,o.CODE
 SOURCE=previous.DEFAULT_OUTPUT
-DEFAULT_OUTPUT=ROOT/'current/l45_interception_guidance_20261024'
-SMOKE_OUTPUT=ROOT/'current/l45_interception_guidance_smoke_20261024'
+DEFAULT_OUTPUT=ROOT/'current/L系列实验输出/l45_interception_guidance_20261024'
+SMOKE_OUTPUT=ROOT/'current/L系列实验输出/l45_interception_guidance_smoke_20261024'
 UIDS=('B','S','P','R','PR')
 lock_json,locked_read=previous.lock_json,previous.locked_read
 

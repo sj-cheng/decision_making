@@ -16,7 +16,7 @@ def job(spec):
         e52_mode=mode,e52_depth=5 if mode=='teacher' else 3,
         e52_budget=1024 if mode=='teacher' else 256,e52_time_ms=1500. if mode=='teacher' else 200.,
         delay=delay, drop_cycles=drop,
-        leaf_value_checkpoint='current/e50_deployment_audit_20261117/leaf_value_training/leaf_value_v1.npz' if mode=='e50' else None)
+        leaf_value_checkpoint='current/E系列实验输出/e50_deployment_audit_20261117/leaf_value_training/leaf_value_v1.npz' if mode=='e50' else None)
     times=[s['elapsed_ms'] for row in r['logs'] for s in row.get('search',{}).values()]
     positions=np.array([row['pursuers'] for row in r['logs']])
     movement=np.linalg.norm(np.diff(positions,axis=0),axis=-1)
@@ -99,12 +99,12 @@ def main():
     p.add_argument('--cases',nargs='+'); p.add_argument('--checkpoint'); p.add_argument('--workers',type=int,default=8)
     p.add_argument('--delay',type=int,default=0); p.add_argument('--drop-cycle',action='append',type=int,default=[])
     a=p.parse_args(); out=Path(a.output); out.mkdir(parents=True,exist_ok=True)
-    cases=sorted(a.cases or [str(p) for p in Path('current/e50_deployment_audit_20261117/formal_random_cases').glob('*/*.json')])
+    cases=sorted(a.cases or [str(p) for p in Path('current/E系列实验输出/e50_deployment_audit_20261117/formal_random_cases').glob('*/*.json')])
     if a.stage=='teacher':
         cases=prepare_teacher_cases(cases,out)
     elif a.stage=='smoke': cases=cases[:1]
     elif a.stage=='pilot' and not a.cases:
-        cases=[str(p) for group in ('wall','corner','sparse') for p in sorted(Path('current/e50_deployment_audit_20261117/formal_random_cases',group).glob('*.json'))[:3]]
+        cases=[str(p) for group in ('wall','corner','sparse') for p in sorted(Path('current/E系列实验输出/e50_deployment_audit_20261117/formal_random_cases',group).glob('*.json'))[:3]]
     if a.stage=='formal':
         if len(cases)!=30 or len({initial_id(json.loads(Path(p).read_text())) for p in cases})!=30:
             raise ValueError('formal suite requires 30 distinct frozen initial states')

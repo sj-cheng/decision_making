@@ -31,7 +31,7 @@ class Pipeline:
     def __init__(self,out,teacher_workers,independent_workers,neural_workers):
         self.out=out;self.lock=threading.Lock();self.state={};self.handles={}
         self.tw,self.iw,self.nw=teacher_workers,independent_workers,neural_workers
-        self.cases=sorted(str(p.relative_to(ROOT)) for p in (ROOT/'current/e50_deployment_audit_20261117/formal_random_cases').glob('*/*.json'))
+        self.cases=sorted(str(p.relative_to(ROOT)) for p in (ROOT/'current/E系列实验输出/e50_deployment_audit_20261117/formal_random_cases').glob('*/*.json'))
         self.pilot=[p for group in ('wall','corner','sparse') for p in sorted(p for p in self.cases if Path(p).parent.name==group)[:3]]
         self.ckpt=out/'frozen_nar_nae.pt'
 

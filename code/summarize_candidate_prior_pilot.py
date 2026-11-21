@@ -11,7 +11,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT/'current/l45_candidate_prior_train_20261026'
+OUT = ROOT/'current/L系列实验输出/l45_candidate_prior_train_20261026'
 
 
 def main():

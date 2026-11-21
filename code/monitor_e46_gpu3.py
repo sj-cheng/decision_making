@@ -16,7 +16,7 @@ import subprocess
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT = ROOT/'current/e46_geometry_teacher_20261105'
+DEFAULT = ROOT/'current/E系列实验输出/e46_geometry_teacher_20261105'
 CST = datetime.timezone(datetime.timedelta(hours=8))
 
 

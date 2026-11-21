@@ -133,9 +133,9 @@ def main():
         '- 最准确的表述是：当前简化搜索的规划近似与强G的实际闭环策略存在实质差异，尚未证明搜索价值；该结果不是MCTS或NTE一般无效的证明。',
         '- 不因本轮结果直接添加网络、价值网络或PPO。后续如做真实闭环单机制消融，应另登记版本，D继续冻结，保留同预算强G，并使用未消耗的新确认集。','',
         '## 数据与复核','',
-        '- [结果前登记](../../code/L45_SEARCH_DIAGNOSIS_REPEAT_20261026.md)、[源码与原数据散列](experiment.json)、[复现完整性](repeat_integrity.json)。',
+        '- [结果前登记](../../../文档/实验协议/L45_SEARCH_DIAGNOSIS_REPEAT_20261026.md)、[源码与原数据散列](experiment.json)、[复现完整性](repeat_integrity.json)。',
         '- [24根请求](root_diagnostic_requests.json)、[逐根2×2原始结果](root_diagnostics.json)、[成组诊断统计](root_diagnostic_statistics.json)。',
-        '- [原闭环报告](../l45_closed_loop_D_20261026/REPORT.md)、[原源码](../../code/solvers/frozen_d_search_interface.py)、[实际重复执行器](../../code/repeat_frozen_d_closed_loop.py)、[诊断执行器](../../code/diagnose_frozen_d_root_rollout.py)。','']
+        '- [原闭环报告](../l45_closed_loop_D_20261026/REPORT.md)、[原源码](../../../code/solvers/frozen_d_search_interface.py)、[实际重复执行器](../../../code/repeat_frozen_d_closed_loop.py)、[诊断执行器](../../../code/diagnose_frozen_d_root_rollout.py)。','']
     (OUT/'REPORT.md').write_text('\n'.join(lines))
     import matplotlib
     matplotlib.use('Agg')

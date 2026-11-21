@@ -41,7 +41,7 @@ def main():
         expected=subprocess.check_output(['git','rev-parse','HEAD:'+rel],cwd=UPSTREAM,text=True).strip()
         assert blob==expected
         files[str(p)]=hashlib.sha256(data).hexdigest()
-    root=Path(__file__).resolve().parents[1]/'current/e45_marl_macro_audit_20261101';root.mkdir(exist_ok=True)
+    root=Path(__file__).resolve().parents[1]/'current/E系列实验输出/e45_marl_macro_audit_20261101';root.mkdir(exist_ok=True)
     commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=UPSTREAM,text=True).strip()
     provenance=dict(url='https://github.com/PKU-MARL/HARL',commit=commit,source_hashes=files,
                     python_files=len(files),modified_author_files=False,simulator_assets_excluded=True)

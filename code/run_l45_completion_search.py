@@ -23,8 +23,8 @@ from benchmark_baselines import get_oracles, oracle_paths
 
 o, v, f = s.o, s.v, s.f
 ROOT = o.ROOT
-DEFAULT_OUTPUT = ROOT/'current/l45_completion_search_20261023'
-SMOKE_OUTPUT = ROOT/'current/l45_completion_search_smoke_20261023'
+DEFAULT_OUTPUT = ROOT/'current/L系列实验输出/l45_completion_search_20261023'
+SMOKE_OUTPUT = ROOT/'current/L系列实验输出/l45_completion_search_smoke_20261023'
 SPLITS = dict(screen_four=('four', 60), screen_none=('none', 30),
               confirm_four=('four', 400), confirm_none=('none', 100),
               guard_four=('four', 100), guard_none=('none', 100),

@@ -18,8 +18,8 @@ import run_e45n_hasac_curriculum as n
 from learning.e45p_execution_precision import environment_action
 
 m=n.m;j=n.j;ROOT=n.ROOT
-OUT=ROOT/'current/e45t_critic_lr_stability_20261102'
-SMOKE=ROOT/'current/e45t_critic_lr_stability_smoke_20261102'
+OUT=ROOT/'current/E系列实验输出/e45t_critic_lr_stability_20261102'
+SMOKE=ROOT/'current/E系列实验输出/e45t_critic_lr_stability_smoke_20261102'
 ARMS=('original','slow_critic')
 
 
@@ -27,7 +27,7 @@ def register(root,smoke=False):
     root=Path(root).resolve()
     if (root/'experiment.json').exists():return verify(root)
     root.mkdir(parents=True,exist_ok=True);parent=n.verify(n.OUT)
-    audit=ROOT/'current/e45s_n29_collapse_20261102'
+    audit=ROOT/'current/E系列实验输出/e45s_n29_collapse_20261102'
     assert j.read(audit/'summary.json')['passed']
     cfg=dict(parent)
     cfg.update(experiment='E45-T',registered_at=time.strftime('%FT%T%z'),smoke=smoke,
@@ -60,7 +60,7 @@ def register(root,smoke=False):
     protected=dict(parent['protected_hashes']);protected.update(parent['source_hashes'])
     path=ROOT/'code/learning/e45p_execution_precision.py';protected[str(path)]=j.sha(path)
     cfg['protected_hashes']=protected
-    files=[Path(__file__).resolve(),ROOT/'code/audit_e45t_smoke.py',ROOT/'code/E45T_CRITIC_LR_PROTOCOL_20261102.md']
+    files=[Path(__file__).resolve(),ROOT/'code/audit_e45t_smoke.py',ROOT/'文档/实验协议/E45T_CRITIC_LR_PROTOCOL_20261102.md']
     cfg['source_hashes']={str(p):j.sha(p) for p in files}
     j.save(root/'experiment.json',cfg)
     for path in files:

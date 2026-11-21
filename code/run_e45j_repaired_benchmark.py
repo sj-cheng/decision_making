@@ -31,8 +31,8 @@ from run_frozen_d_closed_loop import save,sha
 from run_e44_parallel import choose_cpus
 
 ROOT=common.ROOT
-OUT=ROOT/'current/e45j_repaired_benchmark_20261031'
-IROOT=ROOT/'current/e45i_official_baselines_20261031'
+OUT=ROOT/'current/E系列实验输出/e45j_repaired_benchmark_20261031'
+IROOT=ROOT/'current/E系列实验输出/e45i_official_baselines_20261031'
 BASE_SEED=946220261031
 SEEDS=(17,29,43)
 MAIN=('SINGLE_PRIOR','RMAPPO','MAPPO_APF','APF','AG','IG','SINGLE_DIRECT','U','GEOM_SEARCH')
@@ -197,7 +197,7 @@ def prepare(smoke=False,steps=500_000):
             item['curriculum'][variant]=str(path)
         (train if e['split']=='train' else validation).append(item)
     known=set()
-    for directory in ROOT.glob('current/e45*/bank'):
+    for directory in ROOT.glob('current/E系列实验输出/e45*/bank'):
         if directory==OUT/'bank':continue
         for path in directory.glob('*/*.json'):
             packet=read(path)
@@ -255,7 +255,7 @@ def prepare(smoke=False,steps=500_000):
     save(OUT/'experiment.json',cfg)
     for name in SOURCES:
         dest=OUT/'source_snapshot'/name;dest.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(ROOT/'code'/name,dest)
-    shutil.copy2(ROOT/'code/E45J_REPAIRED_BENCHMARK_PROTOCOL_20261031.md',OUT/'PROTOCOL.md')
+    shutil.copy2(ROOT/'文档/实验协议/E45J_REPAIRED_BENCHMARK_PROTOCOL_20261031.md',OUT/'PROTOCOL.md')
     emit('registered',test_groups=len(test),formal_tasks=cfg['formal_tasks'],steps_per_run=steps)
     return cfg
 

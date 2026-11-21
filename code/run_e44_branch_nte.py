@@ -30,7 +30,7 @@ from solvers.e44_routes import MAX_ROUTES, route_arrays
 from learning.e44_policy import Network, Runtime, KINDS, weighted_nll, action_log_density
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT/'current/e44_branch_conditioned_nte_20261027'
+OUT = ROOT/'current/E系列实验输出/e44_branch_conditioned_nte_20261027'
 BASE_SEED = 94420261027
 SEEDS = (17,29,43)
 MECHANISMS = ('uniform_wide','uniform_focused','route_wide','route_focused')
@@ -154,7 +154,7 @@ def prepare():
     for name in SOURCE_NAMES:
         p = OUT/'source_snapshot'/name;p.parent.mkdir(parents=True,exist_ok=True)
         p.write_bytes((ROOT/'code'/name).read_bytes())
-    (OUT/'PROTOCOL.md').write_bytes((ROOT/'code/E44_PROTOCOL_20261027.md').read_bytes())
+    (OUT/'PROTOCOL.md').write_bytes((ROOT/'文档/实验协议/E44_PROTOCOL_20261027.md').read_bytes())
     write_live_report('协议已冻结；接口检查待执行。')
     emit(stage='registered',formal_training_started=False,evaluation_games=config['evaluation_games'])
     return config
@@ -763,7 +763,7 @@ def main():
     if args.output is not None:OUT=args.output.resolve()
     if args.stage=='smoke':
         SMOKE=True
-        if args.output is None:OUT=ROOT/'current/e44_branch_conditioned_nte_smoke_20261027'
+        if args.output is None:OUT=ROOT/'current/E系列实验输出/e44_branch_conditioned_nte_smoke_20261027'
     torch.set_num_threads(1)
     if args.stage=='prepare':prepare()
     elif args.stage=='status':print(json.dumps(read(OUT/'status.json'),ensure_ascii=False,indent=2))

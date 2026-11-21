@@ -5,8 +5,8 @@ import hashlib
 import numpy as np
 
 ROOT=Path(__file__).resolve().parent.parent
-OLD=ROOT/'current/l45_weighted_search_interface_20261026'
-OUT=ROOT/'current/l45_weighted_search_interface_v2_20261026'
+OLD=ROOT/'current/L系列实验输出/l45_weighted_search_interface_20261026'
+OUT=ROOT/'current/L系列实验输出/l45_weighted_search_interface_v2_20261026'
 
 
 def main():
@@ -29,7 +29,7 @@ def main():
         '- 目标重新可见会重置图，随后再遮挡仍发生重建；本轮公共历史往返复现了该开销，不能只称为启动一次的成本。',
         '- 本轮是工程门槛检查，没有真实闭环对手/捕获效果比较。因此尚不能判断T−G或T+Geo−T的额外收益，更不能给出有效教师或NTE训练结论。','',
         '## 预登记与输入隔离','',
-        '研究方案在结果生成前登记于[L45_WEIGHTED_SEARCH_INTERFACE.md](../../code/L45_WEIGHTED_SEARCH_INTERFACE.md)，源文件和公共输入散列见[experiment.json](experiment.json)。',
+        '研究方案在结果生成前登记于[L45_WEIGHTED_SEARCH_INTERFACE.md](../../../文档/实验协议/L45_WEIGHTED_SEARCH_INTERFACE.md)，源文件和公共输入散列见[experiment.json](experiment.json)。',
         '采用前阶段24组确认公共历史作为已见工程开发输入；只读取controller_inputs，未读取environment中的隐藏状态或后续路线。独立效果确认集尚未生成或消耗。',
         '控制器构造函数仅接受公开地图、限速、方法、种子和预算，act仅接受Observation与可选固定模拟数；不存在环境对象或隐藏状态入口。',
         '三方法的估计随机流与搜索流独立。同一观测历史下，64位置、重要性权重和估计器RNG逐位一致。',
@@ -99,7 +99,7 @@ def main():
         '预算通过后才能冻结新的受控与独立效果确认场景、同一真实对手、搜索语义和比较门槛，再比较T−G与T+Geo−T。保留强G，未确认额外收益前不制作教师或训练网络。','',
         '## 数据与复核','',
         '- [预登记与源文件/公共输入散列](experiment.json)、[逐组决策记录](groups/)、[全量审计汇总](results.json)、[阶段决定](decision.json)。',
-        '- 初版[源文件快照](../l45_weighted_search_interface_20261026/source_snapshot.json)与失败结果保留；v2代码：[适配器](../../code/solvers/frozen_d_search_interface.py)、[审计执行器](../../code/audit_frozen_d_search_interface.py)。',
+        '- 初版[源文件快照](../l45_weighted_search_interface_20261026/source_snapshot.json)与失败结果保留；v2代码：[适配器](../../../code/solvers/frozen_d_search_interface.py)、[审计执行器](../../../code/audit_frozen_d_search_interface.py)。',
         '- [冻结D](../l45_corner_turn_estimator_20261025/frozen_estimator/README.md)及部署相关5个文件SHA均与本轮开始一致。',
         '- [960个最终输出动作的独立几何检查](final_action_checks.json)零错误；[源文件完整性复核](source_integrity_checks.json)通过。',
         '- 测试包含权重0.9反例、同历史估计与固定模拟数重放、解析转移与负观测、拒绝非法权重/隐藏参数、精确墙角回归；5项通过。',

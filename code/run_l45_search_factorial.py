@@ -22,8 +22,8 @@ torch.set_num_threads(1)
 base, research = frozen.base, frozen.research
 o, s, v, f = frozen.o, frozen.s, frozen.v, frozen.f
 ROOT, CODE, SOURCE = o.ROOT, o.CODE, frozen.DEFAULT_OUTPUT
-DEFAULT_OUTPUT = ROOT/'current/l45_search_factorial_20261024'
-SMOKE_OUTPUT = ROOT/'current/l45_search_factorial_smoke_20261024'
+DEFAULT_OUTPUT = ROOT/'current/L系列实验输出/l45_search_factorial_20261024'
+SMOKE_OUTPUT = ROOT/'current/L系列实验输出/l45_search_factorial_smoke_20261024'
 PROTOCOL = CODE/'L45_SEARCH_FACTORIAL.md'
 UIDS, REFS = ('A', 'B', 'C', 'D'), ('A', 'B', 'C')
 SPLITS, SCIENCE = frozen.SPLITS, frozen.SCIENCE

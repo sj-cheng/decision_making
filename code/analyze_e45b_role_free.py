@@ -9,7 +9,7 @@ import torch
 from learning.e45b_joint_network import Network,KEYS
 from run_frozen_d_closed_loop import sha,save
 ROOT=Path(__file__).resolve().parents[1]
-OUT=ROOT/'current/e45b_role_free_joint_nte_20261027'
+OUT=ROOT/'current/E系列实验输出/e45b_role_free_joint_nte_20261027'
 DEST=OUT/'posthoc_20261028'
 
 def read(p):return json.loads(Path(p).read_text())

@@ -23,8 +23,8 @@ torch.set_num_threads(1)
 o=old.o
 ROOT,CODE=o.ROOT,o.CODE
 SOURCE=old.DEFAULT_OUTPUT
-DEFAULT_OUTPUT=ROOT/'current/l45_candidate_ablation_20261024'
-SMOKE_OUTPUT=ROOT/'current/l45_candidate_ablation_smoke_20261024'
+DEFAULT_OUTPUT=ROOT/'current/L系列实验输出/l45_candidate_ablation_20261024'
+SMOKE_OUTPUT=ROOT/'current/L系列实验输出/l45_candidate_ablation_smoke_20261024'
 UIDS=('S','F','D','G','P','PR')
 PRIMARY=('F-S','D-F','G-D','P-G','PR-P')
 lock_json,locked_read=old.lock_json,old.locked_read

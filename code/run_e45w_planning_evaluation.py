@@ -33,8 +33,8 @@ from solvers.e45b_joint_nte import Controller
 from solvers.e45f_baselines import GeometryController
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_ROOT = ROOT / "current/e45w_joint_ppo_and_planning_20261103"
-MODEL_ROOT = ROOT / "current/e45c_budget_scaling_20261028/learning/x20/round_12/models"
+DEFAULT_ROOT = ROOT / "current/E系列实验输出/e45w_joint_ppo_and_planning_20261103"
+MODEL_ROOT = ROOT / "current/E系列实验输出/e45c_budget_scaling_20261028/learning/x20/round_12/models"
 WORKER_OUT = None
 WORKER_CFG = None
 WALL_BUDGETS = (50, 100, 200)

@@ -6,7 +6,7 @@ import numpy as np
 from audit_l45_rollout_reliability import save
 
 ROOT=Path(__file__).resolve().parent.parent
-OUT=ROOT/'current/l45_corner_turn_estimator_20261025'
+OUT=ROOT/'current/L系列实验输出/l45_corner_turn_estimator_20261025'
 
 
 def plot(control,confirm):
@@ -102,7 +102,7 @@ def main():
         '**冻结的是下一阶段统一研究估计器，不是部署推荐。** G/T/T+Geo以后必须共享该版本、公开历史、权重语义和实际时间预算；不能把带权64样本按等权抽取，也不能把旧rollout的独立随机运动当作已经验收的地图运动模型。当前未运行搜索效果对照、教师监督或神经训练，既有部署和历史结果未覆盖。\n\n',
         '## 7. 交付与复查\n\n',
         '![受控消融及新确认](figures/ablation_confirmation.png)\n\n',
-        '- [冻结方案](../../code/L45_CORNER_TURN_ESTIMATION.md) · [新实现](../../code/solvers/corner_estimator.py) · [测试](../../code/tests/test_corner_estimator.py)\n',
+        '- [冻结方案](../../../文档/实验协议/L45_CORNER_TURN_ESTIMATION.md) · [新实现](../../../code/solvers/corner_estimator.py) · [测试](../../../code/tests/test_corner_estimator.py)\n',
         '- [原问题定位](diagnosis.json) · [受控消融](controlled_results.json) · [全新确认](confirmation_results.json) · [最终决定](decision.json)\n',
         '- [冻结研究估计器](frozen_estimator/README.md) · [加载器](frozen_estimator/loader.py) · [输出/输入契约](frozen_estimator/descriptor.json) · [冻结重放](frozen_estimator/replay_checks.json)\n',
         '- [源码与输入锁定](experiment.json) · [新历史清单](bank/manifest.json) · [几何验收](bank_acceptance.json) · [银行摘要](bank_frozen.json)\n',

@@ -23,7 +23,7 @@ torch.set_num_threads(1)
 o,old=prior.o,prior.old
 ROOT,CODE=o.ROOT,o.CODE
 SOURCE=prior.DEFAULT_OUTPUT
-DEFAULT_OUTPUT=ROOT/'current/l45_amplitude_match_20261024'
+DEFAULT_OUTPUT=ROOT/'current/L系列实验输出/l45_amplitude_match_20261024'
 UIDS=('S','M','F')
 lock_json,locked_read=prior.lock_json,prior.locked_read
 commit_row,read_cached,read_episode=prior.commit_row,prior.read_cached,prior.read_episode

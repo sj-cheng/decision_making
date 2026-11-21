@@ -55,7 +55,7 @@ def toy(feedback, visible):
 
 class SearchValueBeliefTests(unittest.TestCase):
     def test_all_point_tail_reuse_has_identical_candidates_and_actions(self):
-        bank = Path(__file__).resolve().parents[2]/'current/l45_closed_loop_D_20261026/bank'
+        bank = Path(__file__).resolve().parents[2]/'current/L系列实验输出/l45_closed_loop_D_20261026/bank'
         entries = json.loads((bank/'manifest.json').read_text())['entries']
         checked = 0
         for family in ('long_wall', 'wall_corner', 'multi_route'):

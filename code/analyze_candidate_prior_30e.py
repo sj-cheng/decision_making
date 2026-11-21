@@ -9,7 +9,7 @@ import numpy as np
 from run_frozen_d_closed_loop import save, sha
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT/'current/l45_candidate_prior_30e_20261026'
+OUT = ROOT/'current/L系列实验输出/l45_candidate_prior_30e_20261026'
 SEEDS = (17, 29, 43)
 
 

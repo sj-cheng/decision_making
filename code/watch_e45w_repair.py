@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-P=Path('/data2/sjc/decision_making/current/e45w_joint_ppo_and_planning_20261103')
+P=Path('/data2/sjc/decision_making/current/E系列实验输出/e45w_joint_ppo_and_planning_20261103')
 
 
 def main():

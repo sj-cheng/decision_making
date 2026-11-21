@@ -20,7 +20,7 @@ from solvers.learned_candidate_prior import Controller as Search, Direct, Public
 from learning.candidate_prior import geometry_scores, SEEDS, EPOCHS, TEMPERATURE
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT/'current/l45_candidate_prior_train_20261026'
+OUT = ROOT/'current/L系列实验输出/l45_candidate_prior_train_20261026'
 METHODS = ('G', 'PUCT-U', 'PUCT-G')+tuple(f'NET{s}' for s in SEEDS)+tuple(f'PUCT-L{s}' for s in SEEDS)
 BASE_SEED = 91020261026
 
@@ -64,7 +64,7 @@ def prepare():
     save(OUT/'bank_acceptance.json', dict(passed=True, records=checks, geometry_only=True))
     names = ('run_candidate_prior_pilot.py', 'learning/candidate_prior.py', 'solvers/learned_candidate_prior.py',
         'tests/test_candidate_prior.py', 'L45_CANDIDATE_PRIOR_TRAIN_20261026.md')
-    prior = ROOT/'current/l45_search_value_20261026'
+    prior = ROOT/'current/L系列实验输出/l45_search_value_20261026'
     protected = json.loads((prior/'experiment.json').read_text())['source_hashes'].copy()
     protected.update(json.loads((prior/'experiment.json').read_text())['protected_sources'])
     protected.update({str(prior/p): sha(prior/p) for p in ('REPORT.md', 'final_decision.json', 'HANDOFF.md', 'DELIVERY_SHA256.json')})

@@ -24,8 +24,8 @@ from solvers.root_audit_puct import RootPUCT
 from solvers.e45_team_adapter import public_observation
 from run_frozen_d_closed_loop import legal_action
 
-ROOT=x.ROOT;X=ROOT/'current/e45x_first_capture_diagnostic_20261104'
-OUT=ROOT/'current/e45z_model_calibration_20261104'
+ROOT=x.ROOT;X=ROOT/'current/E系列实验输出/e45x_first_capture_diagnostic_20261104'
+OUT=ROOT/'current/E系列实验输出/e45z_model_calibration_20261104'
 EVENT_NAMES=['capture_e0','capture_e1','retire_p0','retire_p1','see_live_e0','see_live_e1','double_capture','any_capture']
 
 
@@ -243,9 +243,9 @@ def main(args):
     cfg=x.read(X/'experiment.json');x.verify(cfg)
     roots=x.read(X/'root_manifest.json')['roots']
     paths=[Path(__file__),ROOT/'code/tests/test_e45z_model_calibration.py',ROOT/'code/watch_e45z_model_calibration.py',
-           ROOT/'code/E45Z_MODEL_CALIBRATION_PROTOCOL_20261104.md']
+           ROOT/'文档/实验协议/E45Z_MODEL_CALIBRATION_PROTOCOL_20261104.md']
     sources={str(p):x.sha(p) for p in paths}|cfg['source_hashes']
-    ycfg=x.read(ROOT/'current/e45y_compute_allocation_20261104/experiment.json')
+    ycfg=x.read(ROOT/'current/E系列实验输出/e45y_compute_allocation_20261104/experiment.json')
     sources.update(ycfg['source_hashes'])
     inputs={str(X/'public_roots'/f'{r["id"]}.json'):r['sha256'] for r in roots}
     settings=dict(name='E45-Z',source_hashes=sources,input_hashes=inputs,physical_gpu=3,CPU_workers=args.workers,

@@ -11,7 +11,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.patches import Circle
 import plot_e48_dense_obstacles as old
 
-OUT=Path(__file__).resolve().parents[1]/'current/e49_hard_initials_20261107'
+OUT=Path(__file__).resolve().parents[1]/'current/E系列实验输出/e49_hard_initials_20261107'
 
 
 def read(path):return json.loads(Path(path).read_text())

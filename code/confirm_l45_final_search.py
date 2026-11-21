@@ -21,8 +21,8 @@ import torch
 import train_l45_ppo as original
 
 ROOT = original.ROOT
-DEFAULT_SOURCE = ROOT/'current/l45_ppo_control_20261022'
-DEFAULT_OUTPUT = ROOT/'current/l45_ppo_final_search_20261023'
+DEFAULT_SOURCE = ROOT/'current/L系列实验输出/l45_ppo_control_20261022'
+DEFAULT_OUTPUT = ROOT/'current/L系列实验输出/l45_ppo_final_search_20261023'
 SEEDS = (0, 1, 2)
 LAYOUT_SPLITS = (('confirmation', 'four', 510), ('regression', 'none', 511))
 

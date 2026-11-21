@@ -29,7 +29,7 @@ from solvers.nte_d_local import Controller, Node
 from learning.nte_d_local import Network, Runtime
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT/'current/l45_nte_d_local_baseline_20261027'
+OUT = ROOT/'current/L系列实验输出/l45_nte_d_local_baseline_20261027'
 BASE_SEED = 93020261027
 SEEDS = (17, 29, 43)
 METHODS = ('G', 'M0')+tuple(f'{m}{s}' for m in ('NPI', 'NPIV', 'DIRECT') for s in SEEDS)

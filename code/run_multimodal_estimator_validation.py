@@ -19,9 +19,9 @@ from solvers.multimodal_estimator import Estimator, VERSION
 from solvers.estimator_particle_reference import ParticleEstimator
 
 ROOT = Path(__file__).resolve().parent.parent
-DEFAULT = ROOT/"current/l45_multimodal_estimator_20261025"
-OLD_BANK = ROOT/"current/l45_occlusion_scenarios_20261025/bank"
-OLD_EPISODES = ROOT/"current/l45_occluded_comparison_20261025/episodes"
+DEFAULT = ROOT/"current/L系列实验输出/l45_multimodal_estimator_20261025"
+OLD_BANK = ROOT/"current/L系列实验输出/l45_occlusion_scenarios_20261025/bank"
+OLD_EPISODES = ROOT/"current/L系列实验输出/l45_occluded_comparison_20261025/episodes"
 METHODS = ("particle", "systematic", "diffuse", "persistent", "feasible")
 
 

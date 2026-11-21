@@ -22,7 +22,7 @@ import torch
 import run_l5_followup as previous
 
 ROOT=Path(__file__).resolve().parents[1]
-OUT=ROOT/'current/e48_dense_obstacles_20261107'
+OUT=ROOT/'current/E系列实验输出/e48_dense_obstacles_20261107'
 BASE=14820261107
 LABELS=dict(A2='Geometry ranking + search',A3='L5 learned ranking + search',
             A4='Geometry top, direct',A5='L5 learned top, direct',AG='Assigned geometry (AG)')

@@ -8,7 +8,7 @@ import sys
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "current/e45v_fullstate_hasac_20261103"
+OUT = ROOT / "current/E系列实验输出/e45v_fullstate_hasac_20261103"
 
 
 def read(path):

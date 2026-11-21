@@ -27,7 +27,7 @@ from e45g_training_acceleration import public_geometry_cache
 
 j=k.j
 ROOT=k.ROOT
-OUT=ROOT/'current/e45l_marl_diagnosis_20261101'
+OUT=ROOT/'current/E系列实验输出/e45l_marl_diagnosis_20261101'
 FOLDER=None
 OLD_FACTORY=j.factory
 
@@ -81,7 +81,7 @@ def register(root,smoke=False):
     assert len(entries)==3 and all(e['split']=='train' for e in entries)
     if smoke:entries=entries[:1]
     files=[Path(__file__).resolve(),ROOT/'code/tests/test_e45l_marl_diagnosis.py',
-           ROOT/'code/E45L_MARL_DIAGNOSIS_PROTOCOL_20261101.md',ROOT/'code/run_e45k_main_task_learning.py']
+           ROOT/'文档/实验协议/E45L_MARL_DIAGNOSIS_PROTOCOL_20261101.md',ROOT/'code/run_e45k_main_task_learning.py']
     protected=dict(j.read(k.DEFAULT_OUT/'experiment.json')['source_hashes'])
     protected.update(j.read(k.DEFAULT_OUT/'experiment.json')['protected_hashes'])
     starts={str(s):str(k.JROOT/f'learning/RMAPPO_{s}/latest.pt') for s in (17,29)}

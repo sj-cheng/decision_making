@@ -20,8 +20,8 @@ from audit_frozen_d_search_interface import observation, independent_traces
 from analyze_search_value_validation import statistics, write_report
 
 ROOT=Path(__file__).resolve().parents[1]
-OUT=ROOT/'current/l45_search_value_20261026'
-OLD=ROOT/'current/l45_closed_loop_D_20261026/bank'
+OUT=ROOT/'current/L系列实验输出/l45_search_value_20261026'
+OLD=ROOT/'current/L系列实验输出/l45_closed_loop_D_20261026/bank'
 METHODS=('G','OL200','FB200','OLH','FBH')
 OPPONENTS=('matched','rootpuct')
 
@@ -80,7 +80,7 @@ def freeze():
     paths=[ROOT/'code'/p for p in names]+[Path(cpp.__file__),FROZEN/'manifest.json',OLD/'manifest.json',OUT/'bank_frozen.json']
     for e in development_entries():
         paths.extend(OLD/e[k] for k in ('public','environment'))
-    prior=ROOT/'current/l45_rollout_replan_exact_20261026'
+    prior=ROOT/'current/L系列实验输出/l45_rollout_replan_exact_20261026'
     old_names=('REPORT.md','decision.json','development/results.json','confirmation/results.json','DELIVERY_SHA256.json')
     config=dict(version='search_value_exact_belief_v1',methods=list(METHODS),opponents=list(OPPONENTS),
         budgets_ms=dict(G=200.,OL200=200.,FB200=200.,OLH=2000.,FBH=2000.),low_cap=1000,high_cap=4096,depth=8,

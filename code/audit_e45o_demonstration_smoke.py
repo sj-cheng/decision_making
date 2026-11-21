@@ -89,5 +89,5 @@ def audit(root):
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser();parser.add_argument('--output',type=Path,
-        default=o.ROOT/'current/e45o_hasac_demonstration_smoke_20261101')
+        default=o.ROOT/'current/E系列实验输出/e45o_hasac_demonstration_smoke_20261101')
     audit(parser.parse_args().output)

@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 
 ROOT=Path(__file__).resolve().parents[1]
-OUT=ROOT/'current/e48_speed_difficulty_20261107'
+OUT=ROOT/'current/E系列实验输出/e48_speed_difficulty_20261107'
 COLORS={'A4':'#2e8b57','AG':'#ba7c00','A2':'#477bb6','A3':'#b64b75'}
 LABELS={'A4':'Geometric direct','AG':'Assigned geometry','A2':'Geometric search','A3':'Frozen L5 search'}
 
