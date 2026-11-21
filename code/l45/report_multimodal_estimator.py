@@ -11,7 +11,7 @@ import json
 
 from audit_l45_rollout_reliability import save
 
-ROOT=Path(__file__).resolve().parent.parent
+ROOT=Path(__file__).resolve().parents[2]
 OUT=ROOT/'current/L系列实验输出/l45_multimodal_estimator_20261025'
 
 

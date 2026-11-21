@@ -14,7 +14,7 @@ import numpy as np
 sys.path.insert(0,str(Path(__file__).resolve().parent))
 from corner_estimator_scenarios import construct
 from verify_l45_occlusion_scenarios import verify_case
-root=Path(__file__).resolve().parent.parent;out=root/'current/L系列实验输出/l45_corner_turn_estimator_20261025';out.mkdir(exist_ok=True)
+root=Path(__file__).resolve().parents[2];out=root/'current/L系列实验输出/l45_corner_turn_estimator_20261025';out.mkdir(exist_ok=True)
 if (out/'bank_frozen.json').exists():raise RuntimeError('Frozen bank exists')
 known=set()
 for p in (root/'current').glob('**/controller_inputs/*.json'):

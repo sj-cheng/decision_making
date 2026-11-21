@@ -25,7 +25,7 @@ from solvers.local_pursuit import PublicMap
 from solvers.multimodal_estimator import Estimator, VERSION
 from solvers.estimator_particle_reference import ParticleEstimator
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 DEFAULT = ROOT/"current/L系列实验输出/l45_multimodal_estimator_20261025"
 OLD_BANK = ROOT/"current/L系列实验输出/l45_occlusion_scenarios_20261025/bank"
 OLD_EPISODES = ROOT/"current/L系列实验输出/l45_occluded_comparison_20261025/episodes"

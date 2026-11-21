@@ -31,7 +31,7 @@ class ContinuationTests(unittest.TestCase):
     def test_exact_resume_with_different_worker_count(self):
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp);torch.manual_seed(42);PolicyBundle().save(root/'initial.pt')
-            common=[sys.executable,str(CODE/'train_search_rl.py'),'--stage','ppo',
+            common=[sys.executable,str(CODE/'search_rl'/'train_search_rl.py'),'--stage','ppo',
                     '--input',str(root/'initial.pt'),'--episodes','2','--episodes-per-update','1',
                     '--ppo-epochs','1','--validation-episodes','1','--eval-every','2',
                     '--depth','1','--opponent-budget','1','--budget','1']

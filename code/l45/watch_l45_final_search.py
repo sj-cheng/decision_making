@@ -17,7 +17,7 @@ from zoneinfo import ZoneInfo
 
 
 CODE = Path(__file__).resolve().parent
-DEFAULT_OUTPUT = CODE.parent / 'current/L系列实验输出/l45_ppo_final_search_20261023'
+DEFAULT_OUTPUT = CODE.parents[1] / 'current/L系列实验输出/l45_ppo_final_search_20261023'
 RUNNER = CODE / 'confirm_l45_final_search.py'
 PHASES = {
     'checking': '核对模型、配置与独立场景',

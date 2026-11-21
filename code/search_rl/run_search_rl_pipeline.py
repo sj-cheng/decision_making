@@ -29,7 +29,7 @@ CODE=Path(__file__).resolve().parent
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--output',default=str(CODE.parent/'current/search_rl_v1'))
+    parser.add_argument('--output',default=str(CODE.parents[1]/'current/search_rl_v1'))
     parser.add_argument('--workers',type=int,default=16)
     parser.add_argument('--pilot-only',action='store_true',help='Stop after the pilot even if the gate passes')
     args=parser.parse_args();out=Path(args.output).resolve();out.mkdir(parents=True,exist_ok=True)

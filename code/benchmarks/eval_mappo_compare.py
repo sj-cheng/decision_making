@@ -10,6 +10,7 @@ if str(_CODE_DIR) not in sys.path:
     sys.path.insert(0, str(_CODE_DIR))
 import repo_paths
 repo_paths.install()
+_REPO = Path(__file__).resolve().parents[2]
 
 import argparse
 import os
@@ -74,8 +75,8 @@ def main():
     parser.add_argument("--episodes", type=int, default=100)
     args = parser.parse_args()
 
-    m5 = MAPPOPolicySolver(make_problem(), path="../current/baselines/mappo_global.pt")
-    m50 = MAPPOPolicySolver(make_problem(), path="../current/baselines/mappo_50k.pt")
+    m5 = MAPPOPolicySolver(make_problem(), path=str(_REPO / "current/baselines/mappo_global.pt"))
+    m50 = MAPPOPolicySolver(make_problem(), path=str(_REPO / "current/baselines/mappo_50k.pt"))
     probe = make_problem()
     rnd_p = RandomBaseline(team=probe.pursuers)
     rnd_e = RandomBaseline(team=probe.evaders)

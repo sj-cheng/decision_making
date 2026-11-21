@@ -28,7 +28,7 @@ from run_v3_component_ablation import METHODS, build
 from solvers.baselines import RoleMaskedSolver, TeamSolver
 from solvers.solver import get_solver
 
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 OUT = os.path.join(ROOT, "current", "benchmarks", "v3_half_match_ablation_20261113")
 PURSUER_SPEED = 1.2
 EPISODES = 40

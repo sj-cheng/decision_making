@@ -259,7 +259,7 @@ class ValueOffIntegration(unittest.TestCase):
     def test_real_smoke_resume_with_different_workers_and_replay(self):
         with tempfile.TemporaryDirectory(prefix='l45_value_off_integration_') as directory:
             out = Path(directory)
-            script = CODE / 'confirm_l45_value_off.py'
+            script = CODE / 'l45' / 'confirm_l45_value_off.py'
             for workers in (2, 3):
                 with (out / f'run{workers}.log').open('w') as log:
                     subprocess.run([sys.executable, str(script), '--smoke', '--workers', str(workers),

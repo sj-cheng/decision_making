@@ -30,7 +30,7 @@ from solvers.local_pursuit import (Controller,PublicMap,Observation,warmup,legal
                                   modal,predict,recover,guided,route,move)
 
 torch.set_num_threads(1)
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 CODE = ROOT/'code'
 DEFAULT_OUTPUT = ROOT/'current/L系列实验输出/l45_local_pursuit_20261024'
 SMOKE_OUTPUT = ROOT/'current/L系列实验输出/l45_local_pursuit_smoke_20261024'

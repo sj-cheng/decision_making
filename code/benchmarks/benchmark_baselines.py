@@ -13,7 +13,7 @@ all measured solver calls after the configured warm-up steps.
         --seeds 5 --large-seeds 1 --episodes 200 \
         --search-only-budget 3000 --search-learning-budget 1000 \
         --large-budget 50000 --beta-policy 0.5 --beta-value 0.5 \
-        --output ../current/benchmarks
+        --output <repo>/current/benchmarks
 
 Use ``--round-robin`` for the full method-by-method matrix.  MAPPO is included
 when ``--mappo-checkpoint`` points to a trained checkpoint.
@@ -738,7 +738,7 @@ def main():
                         help="fix every pursuer axis speed limit; default keeps the per-episode V7 range")
     parser.add_argument("--obstacle-layout", choices=list(OBSTACLE_LAYOUTS), default="none",
                         help="fixed obstacle map; none preserves the original benchmark")
-    parser.add_argument("--output", default="../current/benchmarks")
+    parser.add_argument("--output", default=os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "current", "benchmarks")))
     parser.add_argument("--root", default=None, help="repository root; defaults to the parent of code/")
     parser.add_argument("--mappo-checkpoint", default=None)
     parser.add_argument(
@@ -787,7 +787,7 @@ def main():
     if unknown_methods:
         parser.error("unknown methods: {}".format(", ".join(sorted(unknown_methods))))
     torch.set_num_threads(args.cpu_threads)
-    args.root = args.root or os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    args.root = args.root or os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
     args.mappo_checkpoint = resolve_mappo_checkpoint(args.root, args.mappo_checkpoint)
     os.makedirs(args.output, exist_ok=True)
     problem = configure_problem(args.obstacle_layout, args.evader_speed, args.pursuer_speed)

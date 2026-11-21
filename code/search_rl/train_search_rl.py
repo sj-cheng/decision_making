@@ -205,10 +205,22 @@ def fork_ppo(args):
 @lru_cache(maxsize=1)
 def implementation_hash():
     digest=hashlib.sha256()
-    for relative in ('local_observation.py','learning/local_rl.py','solvers/belief_mcts.py',
-                     'train_search_rl.py','benchmark_local_obstacles.py','cpp/problems/example8.hpp','cpp/bindings.cpp','cpp/local_geometry.hpp',
-                     'cpp/problems/problem.hpp','problems/example8.py','solvers/c_puct.py','benchmark_baselines.py'):
-        digest.update(relative.encode());digest.update((ROOT/'code'/relative).read_bytes())
+    files = (
+        ('local_observation.py', ROOT/'code'/'local_observation.py'),
+        ('learning/local_rl.py', ROOT/'code'/'learning/local_rl.py'),
+        ('solvers/belief_mcts.py', ROOT/'code'/'solvers/belief_mcts.py'),
+        ('search_rl/train_search_rl.py', ROOT/'code'/'search_rl'/'train_search_rl.py'),
+        ('benchmarks/benchmark_local_obstacles.py', ROOT/'code'/'benchmarks'/'benchmark_local_obstacles.py'),
+        ('cpp/problems/example8.hpp', ROOT/'code'/'cpp/problems/example8.hpp'),
+        ('cpp/bindings.cpp', ROOT/'code'/'cpp/bindings.cpp'),
+        ('cpp/local_geometry.hpp', ROOT/'code'/'cpp/local_geometry.hpp'),
+        ('cpp/problems/problem.hpp', ROOT/'code'/'cpp/problems/problem.hpp'),
+        ('problems/example8.py', ROOT/'code'/'problems/example8.py'),
+        ('solvers/c_puct.py', ROOT/'code'/'solvers/c_puct.py'),
+        ('benchmarks/benchmark_baselines.py', ROOT/'code'/'benchmarks'/'benchmark_baselines.py'),
+    )
+    for relative, path in files:
+        digest.update(relative.encode());digest.update(path.read_bytes())
     from cpp.build import bindings
     digest.update(Path(bindings.__file__).read_bytes())
     return digest.hexdigest()

@@ -16,7 +16,7 @@ from watch_search_rl_reward import read
 
 def main():
     code=Path(__file__).resolve().parent
-    root=code.parent/'current/search_rl_reward_20261022'
+    root=code.parents[1]/'current/search_rl_reward_20261022'
     def status(phase,**extra):
         path=root/'postprocess_status.json';temp=path.with_suffix('.tmp')
         temp.write_text(json.dumps(dict(phase=phase,updated_unix=time.time(),**extra),indent=2));temp.replace(path)

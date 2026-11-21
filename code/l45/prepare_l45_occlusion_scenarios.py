@@ -26,7 +26,7 @@ import numpy as np
 from problems.problem import get_problem
 from solvers.local_pursuit import PublicMap
 
-ROOT=Path(__file__).resolve().parent.parent
+ROOT=Path(__file__).resolve().parents[2]
 DEFAULT=ROOT/'current/L系列实验输出/l45_occlusion_scenarios_20261025'
 FAMILIES=('long_wall','wall_corner','multi_route')
 

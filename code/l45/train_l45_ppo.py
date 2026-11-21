@@ -43,7 +43,7 @@ from benchmark_baselines import (build_solver, configure_problem, problem_metada
 from solvers.baselines import RoleMaskedSolver, TeamSolver
 
 CODE = Path(__file__).resolve().parent
-ROOT = CODE.parent
+ROOT = CODE.parents[1]
 DEFAULT_OUTPUT = ROOT / 'current/L系列实验输出/l45_ppo_control_20261022'
 SOURCE_MODELS = ROOT / 'current/memory_observation_v3/models'
 TEAMS = ((0, 1), (2, 3))

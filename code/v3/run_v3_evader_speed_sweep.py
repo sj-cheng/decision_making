@@ -17,7 +17,7 @@ from benchmark_baselines import configure_problem, generate_initial_states, run_
 from run_v3_component_ablation import build
 from solvers.baselines import TeamSolver
 
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 OUT = os.path.join(ROOT, "current", "benchmarks", "v3_evader_speed_sweep_20261113")
 PURSUER_SPEED = 1.2
 EVADER_SPEEDS = (1.0, 1.3, 1.6, 2.0, 2.5, 3.0)

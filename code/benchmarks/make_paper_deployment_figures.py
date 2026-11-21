@@ -32,9 +32,9 @@ from matplotlib.patches import Circle, FancyArrowPatch
 from learning.oracles import get_oracles
 from problems.example8 import Example8
 
-OUT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../current/plots/paper"))
+OUT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../current/plots/paper"))
 MODEL_DIR = os.path.abspath(
-	os.path.join(os.path.dirname(__file__), "../current/memory_observation_v3/models")
+	os.path.join(os.path.dirname(__file__), "../../current/memory_observation_v3/models")
 )
 ITERATION = 45
 QUERIED_ROBOT = 2

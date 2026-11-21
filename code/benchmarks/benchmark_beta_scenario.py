@@ -24,7 +24,7 @@ Usage (from ``code``; the C++ bindings require the CPython-3.11 env):
     python benchmark_beta_scenario.py --mode run --workers 80
     python benchmark_beta_scenario.py --mode aggregate
 
-Outputs under ``<output>`` (default ``../current/benchmarks/beta_ablation_v1``):
+Outputs under ``<output>`` (default ``<repo>/current/benchmarks/beta_ablation_v1``):
 
     chunks/<role>/<cell>/chunk_s<seed>_e<offset>.csv   per-chunk records
     <role>/<cell>.csv                                  merged per-episode records
@@ -461,7 +461,7 @@ def main():
     parser.add_argument("--chunk-episodes", type=int, default=20,
                         help="episodes per parallel task")
     parser.add_argument("--workers", type=int, default=80)
-    parser.add_argument("--output", default="../current/benchmarks/beta_ablation_v1")
+    parser.add_argument("--output", default=os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "current", "benchmarks", "beta_ablation_v1")))
     parser.add_argument("--root", default=None,
                         help="repository root; defaults to the parent of code/")
     parser.add_argument("--model-dir", default=None, help="policy/value checkpoint directory")
@@ -471,7 +471,7 @@ def main():
                         help="cap the number of chunk tasks (smoke tests)")
     parser.add_argument("--no-progress", action="store_true")
     args = parser.parse_args()
-    args.root = args.root or os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    args.root = args.root or os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
     cells = [tuple(cell) for cell in (args.cells or DEFAULT_CELLS)]
     roles = list(args.roles)

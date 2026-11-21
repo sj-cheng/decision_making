@@ -10,7 +10,7 @@ from pathlib import Path
 import json
 import hashlib
 
-ROOT=Path(__file__).resolve().parent.parent
+ROOT=Path(__file__).resolve().parents[2]
 OUT=ROOT/'current/L系列实验输出/l45_corner_turn_estimator_20261025'
 PACKAGE='l45_corner_shared_20261025'
 

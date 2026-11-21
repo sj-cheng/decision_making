@@ -24,7 +24,7 @@ from solvers.frozen_d_search_interface import (
     sample_roots, sampled_one_step, propagate, COMPASS, sensor_visible)
 from estimator_audit_geometry import point_legal, blocked
 
-ROOT=Path(__file__).resolve().parent.parent
+ROOT=Path(__file__).resolve().parents[2]
 SOURCE=ROOT/'current/L系列实验输出/l45_corner_turn_estimator_20261025'
 OUTPUT=ROOT/'current/L系列实验输出/l45_weighted_search_interface_v2_20261026'
 

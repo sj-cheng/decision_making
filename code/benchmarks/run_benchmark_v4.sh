@@ -15,6 +15,6 @@ exec env \
     --parallel --workers 80 --chunk-episodes 25 --progress-step-interval 100 \
     --round-robin \
     --methods "Policy Only" "Search Only" "Search + Learning" MAPPO "Large-budget MCTS" \
-    --mappo-checkpoint ../current/baselines/mappo_ego_50k.pt \
+    --mappo-checkpoint ../../current/baselines/mappo_ego_50k.pt \
     --mappo-device auto \
-    --output ../current/benchmarks/final_benchmark_v6
+    --output ../../current/benchmarks/final_benchmark_v6

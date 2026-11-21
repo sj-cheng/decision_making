@@ -11,7 +11,7 @@ import json
 import hashlib
 import numpy as np
 
-ROOT=Path(__file__).resolve().parent.parent
+ROOT=Path(__file__).resolve().parents[2]
 OLD=ROOT/'current/L系列实验输出/l45_weighted_search_interface_20261026'
 OUT=ROOT/'current/L系列实验输出/l45_weighted_search_interface_v2_20261026'
 

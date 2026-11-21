@@ -35,7 +35,7 @@ class LookaheadTests(unittest.TestCase):
                     '--opponent-budget','1','--budget','1']
             env=dict(os.environ,OMP_NUM_THREADS='1',MKL_NUM_THREADS='1',OPENBLAS_NUM_THREADS='1',MPLCONFIGDIR='/tmp/mpl')
             for script, name in [('train_search_rl.py','serial'),('train_search_rl_lookahead.py','overlap')]:
-                result=subprocess.run([sys.executable,str(CODE/script),*common,'--output',str(path/name)],
+                result=subprocess.run([sys.executable,str(CODE/'search_rl'/script),*common,'--output',str(path/name)],
                                       capture_output=True,text=True,env=env,timeout=120)
                 self.assertEqual(result.returncode,0,result.stdout+'\n'+result.stderr)
             serial=torch.load(path/'serial/ppo_latest.pt',weights_only=False)
@@ -51,10 +51,10 @@ class LookaheadTests(unittest.TestCase):
             self.assertTrue(any(r['reused_prefetch'] for r in records))
             self.assertEqual(overlap['config']['rollout_backend'],'paired_role_lookahead_v1')
             commands = [
-                [sys.executable,str(CODE/'train_search_rl.py'),*common,'--output',str(path/'split'),'--max-updates','2'],
-                [sys.executable,str(CODE/'train_search_rl_lookahead.py'),*common,'--output',str(path/'fork'),
+                [sys.executable,str(CODE/'search_rl'/'train_search_rl.py'),*common,'--output',str(path/'split'),'--max-updates','2'],
+                [sys.executable,str(CODE/'search_rl'/'train_search_rl_lookahead.py'),*common,'--output',str(path/'fork'),
                  '--fork-from',str(path/'split/ppo_latest.pt'),'--max-updates','1'],
-                [sys.executable,str(CODE/'train_search_rl_lookahead.py'),*common,'--output',str(path/'fork'),
+                [sys.executable,str(CODE/'search_rl'/'train_search_rl_lookahead.py'),*common,'--output',str(path/'fork'),
                  '--fork-from',str(path/'split/ppo_latest.pt')],
             ]
             for command in commands:

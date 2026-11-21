@@ -25,7 +25,7 @@ from run_v3_component_ablation import METHODS, build
 from run_v3_half_match_ablation import fixed_search
 from solvers.baselines import TeamSolver
 
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 OUT = os.path.join(ROOT, "current", "benchmarks", "v3_evader_ablation_pursuer06_20261114")
 EVADER_SPEED = 1.2
 PURSUER_SPEED = 0.6

@@ -17,7 +17,7 @@ from zoneinfo import ZoneInfo
 
 
 CODE = Path(__file__).resolve().parent
-DEFAULT_OUTPUT = CODE.parent / 'current/L系列实验输出/l45_ppo_control_20261022'
+DEFAULT_OUTPUT = CODE.parents[1] / 'current/L系列实验输出/l45_ppo_control_20261022'
 RUNNER = CODE / 'train_l45_ppo.py'
 PHASES = {
     'prepared': '场景与配置已冻结',

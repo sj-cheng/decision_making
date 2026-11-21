@@ -78,9 +78,9 @@ class FinalSearchMonitorTests(unittest.TestCase):
             self.assertEqual(monitor.running_pids(root, proc), [])
 
     def test_relative_and_default_output_resolution(self):
-        cwd = monitor.CODE.parent
+        cwd = monitor.CODE.parents[1]
         self.assertEqual(monitor.runner_output(
-            ['/env/python', '-u', 'code/' + monitor.RUNNER.name], cwd), monitor.DEFAULT_OUTPUT)
+            ['/env/python', '-u', str(monitor.RUNNER.relative_to(cwd))], cwd), monitor.DEFAULT_OUTPUT)
         self.assertEqual(monitor.runner_output(
             ['/env/python', str(monitor.RUNNER), '--output=relative/result'], cwd),
             (cwd / 'relative/result').resolve())

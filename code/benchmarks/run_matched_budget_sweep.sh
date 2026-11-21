@@ -12,7 +12,7 @@ set -euo pipefail
 #   WORKERS=32 CHUNK_EPISODES=2 EPISODES=20 LARGE_SEEDS=1 ./run_matched_budget_sweep.sh
 # WORKERS=1 runs serially for dedicated timing measurements.
 
-ROOT_DIR="${ROOT_DIR:-$(cd "$(dirname "$0")/../.. && pwd)}"
+ROOT_DIR="${ROOT_DIR:-$(cd "$(dirname "$0")/../.." && pwd)}"
 PYTHON_BIN="${PYTHON_BIN:-/home/sjc/miniconda3/envs/dm_env_py311/bin/python}"
 OUTPUT_ROOT="${OUTPUT_ROOT:-${ROOT_DIR}/current/benchmarks/matched_budget_parallel_v1}"
 EPISODES="${EPISODES:-200}"

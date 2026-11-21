@@ -310,7 +310,7 @@ class FollowupTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix='l45_followup_resume_') as temporary:
             root=Path(temporary)
             def run(name,workers,stop=0):
-                cmd=[sys.executable,str(CODE/'run_l45_ppo_followup.py'),'--smoke','--stage','reward-train',
+                cmd=[sys.executable,str(CODE/'l45'/'run_l45_ppo_followup.py'),'--smoke','--stage','reward-train',
                      '--output',str(root/name),'--workers',str(workers)]
                 if stop:cmd+=['--max-updates',str(stop)]
                 with (root/(name+f'-{stop}.log')).open('w') as log:

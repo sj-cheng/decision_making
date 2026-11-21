@@ -20,7 +20,7 @@ from solvers.estimator_particle_reference import ParticleEstimator
 from solvers.multimodal_estimator import Estimator
 from run_multimodal_estimator_validation import score,METHODS
 
-ROOT=Path(__file__).resolve().parent.parent
+ROOT=Path(__file__).resolve().parents[2]
 OUT=ROOT/"current/L系列实验输出/l45_multimodal_estimator_20261025"
 OLD=ROOT/"current/L系列实验输出/l45_occlusion_scenarios_20261025/bank"
 

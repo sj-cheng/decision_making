@@ -28,7 +28,7 @@ from memory_nte_scenarios import construct
 from prepare_l45_occlusion_scenarios import store_case
 from verify_l45_occlusion_scenarios import verify_case, geometry_tests
 
-ROOT=Path(__file__).resolve().parent.parent
+ROOT=Path(__file__).resolve().parents[2]
 DEFAULT=ROOT/'current/L系列实验输出/l45_memory_nte_20261025'
 SEED=62020261025
 FAMILIES=('long_wall','wall_corner','multi_route')

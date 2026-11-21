@@ -30,7 +30,7 @@ from solvers.history_recovery import lattice_paths
 from verify_l45_occlusion_scenarios import movement, visible
 
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 BANK = ROOT/"current/L系列实验输出/l45_occlusion_scenarios_20261025/bank"
 EPISODES = ROOT/"current/L系列实验输出/l45_occluded_comparison_20261025/episodes"
 DEFAULT = ROOT/"current/L系列实验输出/l45_estimator_recovery_20261025"

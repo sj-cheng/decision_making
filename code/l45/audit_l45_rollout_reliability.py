@@ -30,7 +30,7 @@ from solvers.reliable_local_pursuit import Controller, proposal, VERSION, Simula
 from verify_l45_occlusion_scenarios import movement
 
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT/"current/L系列实验输出/l45_occlusion_scenarios_20261025/bank"
 DEFAULT = ROOT/"current/L系列实验输出/l45_rollout_reliability_20261025"
 

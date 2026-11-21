@@ -23,7 +23,7 @@ from learning.oracles import get_oracles
 from solvers.baselines import RoleMaskedSolver, TeamSolver
 from solvers.solver import get_solver
 
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 MODEL_DIR = os.path.join(ROOT, "current", "memory_observation_v3", "models")
 OUT = os.path.join(ROOT, "current", "benchmarks", "v3_component_ablation_20261113")
 ITERATION = 45

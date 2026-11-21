@@ -33,7 +33,7 @@ from solvers.branch_nte import Controller,Search,expert_search
 from solvers.local_pursuit import safe,Observation
 
 torch.set_num_threads(1)
-ROOT=Path(__file__).resolve().parent.parent
+ROOT=Path(__file__).resolve().parents[2]
 SOURCE=ROOT/'current/L系列实验输出/l45_memory_nte_20261025'
 DEFAULT=ROOT/'current/L系列实验输出/l45_branch_nte_20261025'
 SEED=63020261025

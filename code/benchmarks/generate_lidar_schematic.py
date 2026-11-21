@@ -262,7 +262,7 @@ def main():
 	cbar.set_label("normalized distance", fontsize=7.5)
 	cbar.ax.tick_params(labelsize=7)
 
-	out_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "current", "plots"))
+	out_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "current", "plots"))
 	os.makedirs(out_dir, exist_ok=True)
 	pdf_path = os.path.join(out_dir, "lidar_perception_schematic.pdf")
 	png_path = os.path.join(out_dir, "lidar_perception_schematic.png")
