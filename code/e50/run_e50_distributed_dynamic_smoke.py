@@ -20,7 +20,7 @@ from solvers.e50_distributed_geometry import (DEFAULT_MAX_ACCELERATION, SHARED_S
 from solvers.e50_distributed_runtime import (AgentObservation, FactorisedMCTS,
     LocalPlan, PeerBus, PeerMailbox, make_local_geometry_mcts, make_peer_message)
 from solvers.e50_leaf_value import LeafValueNet
-from solvers.e50_lidar_map import LidarPlanningMap, raycast_scan
+from solvers.e50_lidar_map import LidarPlanningMap, raycast_scan, points_to_obstacle_boxes
 
 
 class Belief:
@@ -92,7 +92,16 @@ def _safe_executed_prefix(start, positions, local_map):
     return previous, truncated
 
 
-def run(case_path, output, cycles=20, lidar_rays=256, seed=17, delay=0, drop_cycles=(), rootpuct=False, rootpuct_simulations=20, leaf_value_checkpoint=None, e52=False, e52_checkpoint=None, e52_mode="both", e52_depth=3, e52_budget=256, e52_time_ms=200., e52_nae_strategy='legacy', offline_branch=None, e52_advantage_checkpoint=None, *, geometric_evader_speed=None, evader_minco=False, max_acceleration=None, shared_max_speed=None):
+def run(case_path, output, cycles=20, lidar_rays=256, seed=17, delay=0, drop_cycles=(), rootpuct=False, rootpuct_simulations=20, leaf_value_checkpoint=None, e52=False, e52_checkpoint=None, e52_mode="both", e52_depth=None, e52_budget=256, e52_time_ms=None, e52_nae_strategy='legacy', offline_branch=None, e52_advantage_checkpoint=None, *, geometric_evader_speed=None, evader_minco=False, max_acceleration=None, shared_max_speed=None, evader_hmcts=False, evader_window=8, e53_depth=3, e53_simulations=256, pursuer_structure="local", pursuer_speed_cap=None, decision_hook=None, audit_nae=False, evader_cruise=False, environment_horizon_floor=0, legacy_policy=None):
+    if evader_cruise and not evader_hmcts:
+        raise ValueError("cruise candidates require the H-MCTS evader")
+    if pursuer_structure not in ("local", "coordinated", "joint_oracle", "joint_shared", "joint_global"):
+        raise ValueError("unknown pursuer structure")
+    if e52_depth is None:
+        e52_depth = 8 if pursuer_structure == "joint_shared" else 3
+    full_joint = pursuer_structure in ("joint_shared", "joint_global")
+    if full_joint and (not e52 or offline_branch is not None):
+        raise ValueError("joint search requires E52 online planning")
     if evader_minco and geometric_evader_speed is None and shared_max_speed is None:
         shared_max_speed = SHARED_SPEED_LIMIT
     if shared_max_speed is not None:
@@ -104,9 +113,17 @@ def run(case_path, output, cycles=20, lidar_rays=256, seed=17, delay=0, drop_cyc
         if max_acceleration is None:
             max_acceleration = SHARED_ACCELERATION_LIMIT
     pursuer_max_speed = 2. if shared_max_speed is None else shared_max_speed
+    if pursuer_speed_cap is not None:
+        if shared_max_speed is None or not 0 < pursuer_speed_cap <= shared_max_speed:
+            raise ValueError("pursuer_speed_cap requires a positive cap within the shared motion limit")
+        pursuer_max_speed = float(pursuer_speed_cap)
+    if evader_hmcts and (rootpuct or offline_branch is not None):
+        raise ValueError('evader H-MCTS cannot be combined with RootPUCT or offline branch collection')
     if geometric_evader_speed is not None and (rootpuct or offline_branch is not None):
         raise ValueError('geometric evader cannot be combined with RootPUCT or offline branch collection')
-    if evader_minco and (not e52 or geometric_evader_speed is None):
+    if evader_hmcts and not evader_minco:
+        raise ValueError('evader H-MCTS requires MINCO execution')
+    if evader_minco and (not e52 or (geometric_evader_speed is None and not evader_hmcts)):
         raise ValueError('evader MINCO requires the E52 geometric opponent')
     if max_acceleration is not None:
         if not evader_minco:
@@ -133,19 +150,32 @@ def run(case_path, output, cycles=20, lidar_rays=256, seed=17, delay=0, drop_cyc
     opponent_policy = 'scripted'
     if rootpuct:
         from e49_rules import create_environment, make_opponent
-        effective_horizon = max(int(case.get('horizon', 80)), int(cycles))
+        effective_horizon = max(int(case.get('horizon', 80)), int(cycles), environment_horizon_floor)
         env = create_environment(boxes, horizon=effective_horizon)
         opponent = make_opponent(env, int(seed), simulations=int(rootpuct_simulations))
         opponent_policy = 'rootpuct'
-    elif geometric_evader_speed is not None:
+    elif geometric_evader_speed is not None or evader_hmcts:
         from e49_rules import _legal, create_environment
         from solvers.e49_geometric_evader import GeometricEvader
-        effective_horizon = max(int(case.get('horizon', 80)), int(cycles))
+        from solvers.e53_evader_hmcts import EvaderHMCTS
+        effective_horizon = max(int(case.get('horizon', 80)), int(cycles), environment_horizon_floor)
         if not all(_legal(target, boxes) for target in targets):
             raise ValueError('geometric evader requires legal initial positions')
-        opponent = GeometricEvader(evader_speed=geometric_evader_speed, predicted_pursuer_speed=shared_max_speed)
+        if geometric_evader_speed is None:
+            geometric_evader_speed = shared_max_speed or SHARED_SPEED_LIMIT
+        opponent = (EvaderHMCTS(evader_speed=geometric_evader_speed,
+                                 max_acceleration=max_acceleration or SHARED_ACCELERATION_LIMIT,
+                                 depth=e53_depth, simulations=e53_simulations,
+                                 window=evader_window, seed=seed, cruise=evader_cruise) if evader_hmcts else
+                    GeometricEvader(evader_speed=geometric_evader_speed,
+                                    predicted_pursuer_speed=shared_max_speed))
         env = create_environment(boxes, horizon=effective_horizon, evader_speed=geometric_evader_speed)
-        opponent_policy = 'geometric'
+        # Historical starts contain elapsed observation ages, which remain valid
+        # when the episode clock is rebased to the start of this game.
+        if evader_hmcts:
+            state[env.time_idx] = 0.
+            opponent.prepare(env, targets[0])
+        opponent_policy = 'evader_hmcts' if evader_hmcts else 'geometric'
     if evader_minco:
         from solvers.e50_evader_minco import EvaderMinco
         from solvers.e50_interfaces import sample_quintic_at
@@ -176,7 +206,7 @@ def run(case_path, output, cycles=20, lidar_rays=256, seed=17, delay=0, drop_cyc
         advantage = None
         if e52_advantage_checkpoint is not None:
             from solvers.e52_advantage import AdvantageMLP
-            if e52_nae_strategy != 'leaf_residual' or e52_mode not in ('both', 'nae'):
+            if e52_nae_strategy not in ('leaf_residual', 'budget_leaf_residual') or e52_mode not in ('both', 'nae'):
                 raise ValueError('branch advantage requires leaf_residual with NAE enabled')
             advantage = AdvantageMLP.load(e52_advantage_checkpoint)
             advantage.torch.set_num_threads(1)
@@ -185,11 +215,14 @@ def run(case_path, output, cycles=20, lidar_rays=256, seed=17, delay=0, drop_cyc
                                             high_simulations=e52_budget, max_candidates=8, depth=e52_depth,
                                             time_budget_ms=e52_time_ms, duration=2.,
                                             nae_strategy=e52_nae_strategy,
-                                            max_acceleration=max_acceleration, max_speed=shared_max_speed) for i in range(2)}
+                                            max_acceleration=max_acceleration, max_speed=pursuer_max_speed if shared_max_speed is not None else None) for i in range(2)}
     else:
         controllers = {i: make_local_geometry_mcts(value_net=value_net, simulations=8,
                                                     seed=seed+i, duration=2., max_candidates=8,
                                                     candidate_samples=128) for i in range(2)}
+    if audit_nae:
+        for controller in controllers.values():
+            controller.audit_ranking = True
     mailboxes = {i: PeerMailbox(i) for i in range(2)}
     bus = PeerBus((0, 1), delay=int(delay), drop_cycles=drop_cycles)
     previous = {0: None, 1: None}; seq = {0: 0, 1: 0}; logs=[]; captures=[]
@@ -198,6 +231,7 @@ def run(case_path, output, cycles=20, lidar_rays=256, seed=17, delay=0, drop_cyc
     belief_last_seen = {0: -1, 1: -1}
     headings = {0: 0., 1: 0.}
     velocities = np.zeros((2, 2)); accelerations = np.zeros((2, 2))
+    evader_velocities = np.zeros((2, 2)); evader_accelerations = np.zeros((2, 2))
     active_e = np.ones(2, dtype=bool)
     active_p = np.ones(2, dtype=bool)
     rootpuct_failures = 0
@@ -214,6 +248,8 @@ def run(case_path, output, cycles=20, lidar_rays=256, seed=17, delay=0, drop_cyc
         observations = {}; plans = {}; sensor_stats = {}
         minco_records = {}
         evader_records = {}
+        evader_search = {}
+        camera_visible = np.zeros((2, 2), bool)
         if evader_minco:
             pursuer_paths = np.repeat(pursuers[None, :, :], samples + 1, axis=0)
             evader_paths = np.repeat(targets[None, :, :], samples + 1, axis=0)
@@ -223,6 +259,7 @@ def run(case_path, output, cycles=20, lidar_rays=256, seed=17, delay=0, drop_cyc
             maps[aid].update(pursuers[aid], scan)
             frame = trackers[aid].step(pursuers[aid].reshape(1, 2), targets, [active_p[aid]],
                                        active_e, [headings[aid]], boxes, dt=1.)
+            camera_visible[aid] = frame.visible[0]
             reports = [x[0] for x in frame.reports if x and x[0] is not None]
             if e52:
                 beliefs[aid].update([(tid, x[0]) for tid,x in enumerate(frame.reports) if x and x[0] is not None], float(cycle))
@@ -264,10 +301,40 @@ def run(case_path, output, cycles=20, lidar_rays=256, seed=17, delay=0, drop_cyc
                                    None if previous[aid] is None else previous[aid].action,
                                    acceleration=accelerations[aid].copy() if e52 else None)
             observations[aid] = obs
-            plans[aid] = controllers[aid].act(obs)
+            if not full_joint and legacy_policy is None:
+                plans[aid] = controllers[aid].act(obs)
             if offline_branch is not None:
                 distances = np.linalg.norm(obs.belief.particles - obs.pose, axis=1)
                 sensor_stats[str(aid)]['nearest_belief'] = float(min(distances)) if len(distances) else None
+        coordination = dict(mode=pursuer_structure, changed=False)
+        if legacy_policy is not None:
+            measured = points_to_obstacle_boxes(np.concatenate([m.points for m in maps]),
+                                                inflation=.05, max_boxes=24, merge_distance=.25)
+            reports = [[targets[j].tolist() if camera_visible[i,j] else None for i in range(2)] for j in range(2)]
+            if cycle == 0 and getattr(legacy_policy, 'initial_target_fix', False):
+                reports = [[targets[j].tolist() if active_e[j] and active_p[i] else None
+                            for i in range(2)] for j in range(2)]
+            camera = dict(gimbal_yaw=[sensor_stats[str(i)]['gimbal_yaw'] for i in range(2)],
+                          headings=[headings[i] for i in range(2)], fov_rad=np.deg2rad(60.), max_range=20.)
+            plans = legacy_policy(cycle, pursuers, active_p, active_e, reports, camera, measured)
+            for controller in controllers.values():
+                controller.last_search = dict(method=legacy_policy.method)
+            coordination['mode'] = 'legacy_team'
+        elif full_joint:
+            from solvers.e54_joint_search import joint_plans
+            world = (boxes, targets[active_e], evader_velocities[active_e]) if pursuer_structure == "joint_global" else None
+            plans, coordination = joint_plans(observations, controllers, world)
+        elif e52 and pursuer_structure != "local":
+            from solvers.e54_pursuer_coordination import coordinate
+            plans_list, coordination = coordinate(
+                [plans[0], plans[1]],
+                [controllers[0].last_search, controllers[1].last_search],
+                [beliefs[0], beliefs[1]],
+                oracle_targets=targets[active_e] if pursuer_structure == "joint_oracle" else None,
+                mode="oracle" if pursuer_structure == "joint_oracle" else "belief")
+            plans = {i: plans_list[i] for i in (0, 1)}
+        if decision_hook is not None:
+            decision_hook(cycle, observations, controllers, plans)
         if offline_branch is not None and offline_branch.cycle == cycle:
             # Both agents plan from their own observations before the single
             # offline intervention. Native RNG is reconstructed by replaying
@@ -393,8 +460,14 @@ def run(case_path, output, cycles=20, lidar_rays=256, seed=17, delay=0, drop_cyc
                 terminal_opponent_skips += 1
             elif any(evader_active):
                 try:
+                    if evader_hmcts:
+                        opponent.set_camera_state(trackers, [observations[i].heading for i in (0, 1)], camera_visible)
+                        opponent.set_execution_state(velocity=evader_velocities,
+                                                     acceleration=evader_accelerations)
                     searched = opponent.search(env, state.reshape(-1, 1).copy(), turn=0)
                     evader_action = np.asarray(searched.best_action[:4], float).reshape(2, 2)
+                    if evader_hmcts:
+                        evader_search = dict(getattr(searched, 'metadata', opponent.last_search))
                 except Exception as exc:
                     if not rootpuct:
                         raise
@@ -415,8 +488,10 @@ def run(case_path, output, cycles=20, lidar_rays=256, seed=17, delay=0, drop_cyc
             if evader_minco:
                 for tid, is_active in enumerate(evader_active):
                     if is_active:
-                        prefix, mode = evader_executor.prefix(tid, targets[tid], evader_action[tid])
+                        prefix, mode = evader_executor.prefix(tid, targets[tid], evader_action[tid], waypoint=evader_hmcts, cruise_track=(opponent.selected_cruise[tid] if evader_cruise else None))
                         evader_paths[:, tid] = prefix['positions']
+                        evader_velocities[tid] = prefix['velocities'][-1]
+                        evader_accelerations[tid] = prefix['accelerations'][-1]
                         evader_records[str(tid)] = dict(mode=mode, **{k:v.tolist() for k,v in prefix.items()})
                 state = env.step_trajectories(state, pursuer_paths, evader_paths)
             else:
@@ -482,9 +557,35 @@ def run(case_path, output, cycles=20, lidar_rays=256, seed=17, delay=0, drop_cyc
                 points = np.array(record["executed_positions"])
                 if len(boxes) and np.any(((points[:, None] >= boxes[None, :, :, 0]) & (points[:, None] <= boxes[None, :, :, 1])).all(axis=-1)):
                     pursuer_collision = True
+        prediction_metrics = {}
+        # Compare the one-step predictions used by each search with the
+        # physical state after this cycle.  Pursuer beliefs are unlabeled, so
+        # report nearest-target errors and threshold hit rates.
+        for aid in (0, 1):
+            predicted = controllers[aid].last_search.get('predicted_targets', []) if e52 else []
+            predicted = np.asarray(predicted, float).reshape(-1, 2)
+            if len(predicted) and len(targets):
+                errors = np.min(np.linalg.norm(predicted[:, None] - targets[None, :, :], axis=2), axis=1)
+                prediction_metrics[f'pursuer_{aid}_target'] = dict(
+                    count=int(len(errors)), mean_m=float(np.mean(errors)),
+                    median_m=float(np.median(errors)),
+                    within_1m=float(np.mean(errors <= 1.)),
+                    within_2m=float(np.mean(errors <= 2.)),
+                    predicted=predicted.tolist())
+        if evader_hmcts and evader_search.get('predicted_pursuers') is not None:
+            predicted = np.asarray(evader_search['predicted_pursuers'], float).reshape(2, 2)
+            errors = np.linalg.norm(predicted - pursuers, axis=1)
+            prediction_metrics['evader_pursuer'] = dict(
+                count=int(len(errors)), mean_m=float(np.mean(errors)),
+                median_m=float(np.median(errors)),
+                within_1m=float(np.mean(errors <= 1.)),
+                within_2m=float(np.mean(errors <= 2.)),
+                predicted=predicted.tolist())
         logs.append(dict(cycle=cycle, delivered=int(delivered), captures=list(captures),
                          pursuer_collision=bool(pursuer_collision), minco=minco_records,
                          sensor_stats=sensor_stats,
+                         coordination=coordination,
+                         prediction_metrics=prediction_metrics,
                          search={str(a): controllers[a].last_search for a in (0,1)} if e52 else {},
                          beliefs={str(a): beliefs[a].payload() for a in (0,1)} if e52 else {},
                          plans={str(a): dict(endpoint=plans[a].endpoint.tolist(),
@@ -494,6 +595,8 @@ def run(case_path, output, cycles=20, lidar_rays=256, seed=17, delay=0, drop_cyc
                          peer_ages={str(a): mailboxes[a].ages(cycle) for a in (0,1)}))
         if evader_minco:
             logs[-1]['evader_minco'] = evader_records
+        if evader_hmcts:
+            logs[-1]['evader_search'] = evader_search
         publish_progress(cycle+1)
         if len(captured_targets) == len(targets):
             break
@@ -512,6 +615,8 @@ def run(case_path, output, cycles=20, lidar_rays=256, seed=17, delay=0, drop_cyc
                   environment_horizon=int(env.tf) if env is not None else None,
                   leaf_value_checkpoint=None if leaf_value_checkpoint is None else str(leaf_value_checkpoint),
                   e52=bool(e52), e52_mode=e52_mode, seed=int(seed), e52_depth=e52_depth, e52_budget=e52_budget, e52_time_ms=e52_time_ms, e52_checkpoint=None if e52_checkpoint is None else str(e52_checkpoint),
+                  e53_depth=int(e53_depth), e53_simulations=int(e53_simulations), evader_window=int(evader_window), evader_cruise=evader_cruise,
+                  pursuer_structure=pursuer_structure,
                   rootpuct_failures=int(rootpuct_failures),
                   rootpuct_error_cycles=rootpuct_error_cycles,
                   partial_active_fallbacks=int(partial_active_fallbacks),
@@ -519,7 +624,7 @@ def run(case_path, output, cycles=20, lidar_rays=256, seed=17, delay=0, drop_cyc
                   target_state_projections=int(target_state_projections),
                   terminal_opponent_skips=int(terminal_opponent_skips),
                   prefix_truncations=int(prefix_truncations),
-                  truth_used_only_sensor=True, captures=captures, logs=logs)
+                  truth_used_only_sensor=(pursuer_structure not in ("joint_oracle", "joint_global")), captures=captures, logs=logs)
     output = Path(output); output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + '\n')
     publish_progress(len(logs), state="complete")
@@ -534,6 +639,13 @@ if __name__ == '__main__':
     p.add_argument('--geometric-evader-speed', type=float)
     p.add_argument('--evader-minco', action='store_true',
                    help='execute geometric evader actions as rolling MINCO trajectories')
+    p.add_argument('--evader-hmcts', action='store_true',
+                   help='use the privileged sparse-reward H-MCTS evader baseline')
+    p.add_argument('--evader-cruise', action='store_true', help='include speed-conditioned cruise waypoints in evader H-MCTS')
+    p.add_argument('--evader-window', type=int, default=8)
+    p.add_argument('--e53-depth', type=int, default=3)
+    p.add_argument('--e53-simulations', type=int, default=256)
+    p.add_argument('--pursuer-structure', choices=('local', 'coordinated', 'joint_oracle', 'joint_shared', 'joint_global'), default='local')
     p.add_argument('--shared-max-speed', type=float, help='planar speed limit for both MINCO teams (m/s)')
     p.add_argument('--max-acceleration', type=float,
                    help='shared continuous planar acceleration cap in m/s² (requires E52 and --evader-minco)')
@@ -547,5 +659,8 @@ if __name__ == '__main__':
                  leaf_value_checkpoint=a.leaf_value_checkpoint, e52=a.e52,
                  e52_checkpoint=a.e52_checkpoint, e52_nae_strategy=a.e52_nae_strategy,
                  geometric_evader_speed=a.geometric_evader_speed, evader_minco=a.evader_minco,
-                 max_acceleration=a.max_acceleration, shared_max_speed=a.shared_max_speed)
+                 max_acceleration=a.max_acceleration, shared_max_speed=a.shared_max_speed,
+                 evader_hmcts=a.evader_hmcts, evader_window=a.evader_window, evader_cruise=a.evader_cruise,
+                 e53_depth=a.e53_depth, e53_simulations=a.e53_simulations,
+                 pursuer_structure=a.pursuer_structure)
     print(json.dumps(result, ensure_ascii=False))

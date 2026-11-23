@@ -22,7 +22,7 @@ from solvers.history_recovery import GEOMETRY_MARGIN
 
 
 @njit(cache=True)
-def speed_lattice(last, boxes, spacing, speed):
+def speed_lattice(last, boxes, spacing, speed, allow_proxy_anchor=False):
     axes = []
     for axis in range(2):
         values = [-10., 10.]
@@ -62,6 +62,15 @@ def speed_lattice(last, boxes, spacing, speed):
                     links[i, lengths[i]] = j
                     lengths[i] += 1
     root = int(np.argmin(np.sum((points-last)**2, axis=1)))
+    if allow_proxy_anchor and not free[root] and np.linalg.norm(points[root]-last) <= 1e-8:
+        # The measured position is exact, but a bounding rectangle around
+        # sparse returns can cover free space. Seed the belief on the closest
+        # legal grid point; retain every obstacle and all edge checks.
+        candidates = np.flatnonzero(free & (lengths > 0))
+        if len(candidates):
+            delta = points[candidates] - last
+            root = candidates[np.argmin(np.sum(delta * delta, axis=1))]
+            return points, links, lengths, sensor, root, int(count[0])
     if not free[root] or np.linalg.norm(points[root]-last) > 1e-8:
         raise RuntimeError('No lawful public anchor')
     return points, links, lengths, sensor, root, int(count[0])

@@ -23,13 +23,16 @@ def canonical_actor_inputs(features):
     return actor_inputs(canonical_features(features))
 
 
-def progress_waypoint(public,position,target):
+def progress_waypoint(public,position,target, *, allow_unreachable=False):
     # route() admits the current vertex as a zero-cost first hop. Remove only
     # those zero-length candidates, retaining all pairwise shortest distances.
     keep=np.max(np.abs(public.vertices-position),axis=1)>1e-7
     vertices=public.vertices[keep];dist=public.dist[np.ix_(keep,keep)]
     distance,index=route(position,target,public.speed,vertices,dist,public.boxes,np.zeros(2,np.int64))
-    if distance>=1_000_000:raise RuntimeError('No public route to target representative')
+    if distance>=1_000_000:
+        if allow_unreachable:
+            return None
+        raise RuntimeError('No public route to target representative')
     return vertices[index].copy() if index>=0 else np.asarray(target).copy()
 
 
@@ -63,7 +66,13 @@ def route_apf_action(own,obs,raw=None,coefficients=None):
     if raw is not None:gains*=np.exp(np.log(4.)*np.tanh(raw))
     normalized=np.zeros((2,2));fallbacks=0
     for i,j in assignment.items():
-        waypoint=progress_waypoint(public,positions[i],goals[j]);delta=waypoint-positions[i]
+        waypoint=progress_waypoint(public,positions[i],goals[j],
+            allow_unreachable=getattr(own,'rolling_lidar_routes',False))
+        if waypoint is None:
+            own.route_misses.append(dict(agent=int(i), target=int(j), position=positions[i].tolist(),
+                                         goal=goals[j].tolist(), boxes=public.boxes.tolist()))
+            continue
+        delta=waypoint-positions[i]
         route_action=delta/max(1.,np.max(np.abs(delta))/public.speed)
         pull=delta/max(np.linalg.norm(delta),1e-12)
         away,tangent=repulsion(positions[i],public.boxes,waypoint)

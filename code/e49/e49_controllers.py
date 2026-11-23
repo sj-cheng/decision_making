@@ -88,7 +88,7 @@ def _clone(fn, replacements, extra=None):
     return namespace[fn.__name__]
 
 
-def install(horizon=80,out=None):
+def install(horizon=80,out=None, *, proxy_anchor_hook=None):
     """Install E49-only process hooks. Call before constructing controllers."""
     global HORIZON,OUT,_INSTALLED
     horizon=int(horizon)
@@ -117,7 +117,9 @@ def install(horizon=80,out=None):
         frozen.Estimator.update=_clone(frozen.Estimator.update,[('80-obs.step','E49_H()-obs.step')],{'E49_H':lambda:HORIZON})
         diagnostic.RecordedTeamBelief.update_team=_clone(diagnostic.RecordedTeamBelief.update_team,[('80-obs[\'step\']','E49_H()-obs[\'step\']')],{'E49_H':lambda:HORIZON})
     def make_graph(last,boxes):
-        p,l,n,s,r,q=speed_lattice(last,boxes,.75,1.5)
+        p,l,n,s,r,q=speed_lattice(last,boxes,.75,1.5,proxy_anchor_hook is not None)
+        if proxy_anchor_hook is not None and np.linalg.norm(p[r]-last)>1e-8:
+            proxy_anchor_hook(last,p[r],boxes)
         return p,l,n,np.zeros((len(p),l.shape[1],9)),s,r,q
     def probabilities(p,l,n,last,boxes,v,d):return speed_map_probabilities(p,l,n,last,boxes,v,d,1.5)
     def target_map(boxes,_legacy_limit):return PublicMap(boxes,1.5)
@@ -125,7 +127,7 @@ def install(horizon=80,out=None):
     frozen.map_probabilities=joint.map_probabilities=refine.map_probabilities=probabilities
     frozen.PublicMap=refine.PublicMap=target_map
     frozen.Estimator.update.__globals__.update(make_graph=make_graph,map_probabilities=probabilities,PublicMap=target_map)
-    refine.lattice=lambda last,boxes,spacing:speed_lattice(last,boxes,spacing*1.5,1.5)[:5]
+    refine.lattice=lambda last,boxes,spacing:speed_lattice(last,boxes,spacing*1.5,1.5,proxy_anchor_hook is not None)[:5]
     refine.motion_probabilities=lambda p,l,n,m:speed_probabilities(p,l,n,m,1.5)
     class Belief(RecoveringBelief):
         def update(self,obs):

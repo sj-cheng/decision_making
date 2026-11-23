@@ -11,6 +11,7 @@ from solvers.e50_distributed_geometry import (DEFAULT_MAX_ACCELERATION, _local_t
     reachable_waypoint, braking_waypoints, stop_duration, evaluate_minco_endpoint, single_agent_endpoints, validate_max_acceleration)
 from solvers.e50_distributed_runtime import LocalPlan
 from solvers.e52_nar_nae import observation_features
+from solvers.e53_capture import capture_samples
 
 
 class LocalSnapshot:
@@ -42,19 +43,21 @@ class Node:
     visits: int = 0
     total: float = 0.
     children: list = field(default_factory=list)
+    budget_blocked: bool = field(default=False, init=False)
     expanded: bool = False
     duration: float = 2.
     value_bonus: float | None = None
     pass_through: bool = False
+    prefix: object = None
 
 
 class HierarchicalMCTS:
     OPTIONS = ('chase', 'frontier', 'bypass', 'recover')
-    NAE_STRATEGIES = ('legacy', 'tracked', 'leaf_residual')
+    NAE_STRATEGIES = ('legacy', 'tracked', 'leaf_residual', 'budget_leaf_residual')
     MAX_LEAF_BONUS = .15
 
     def __init__(self, *, nar=None, nae=None, high_simulations=256, max_candidates=8,
-                 max_distance=2., duration=2., depth=3, time_budget_ms=200., gamma=.98,
+                 max_distance=2., duration=2., depth=3, time_budget_ms=None, gamma=.98,
                  nae_strategy='legacy', max_acceleration=None, max_speed=None):
         self.nar, self.nae = nar, nae
         if nae_strategy not in self.NAE_STRATEGIES:
@@ -69,8 +72,8 @@ class HierarchicalMCTS:
         self.continuous_acceleration = max_acceleration is not None
         self.max_acceleration = (DEFAULT_MAX_ACCELERATION if max_acceleration is None
                                  else validate_max_acceleration(max_acceleration))
-        self.depth, self.time_budget_ms, self.gamma = int(depth), float(time_budget_ms), float(gamma)
-        if min(self.high_simulations, self.max_candidates, self.depth) < 1 or self.time_budget_ms <= 0:
+        self.depth, self.time_budget_ms, self.gamma = int(depth), time_budget_ms, float(gamma)
+        if min(self.high_simulations, self.max_candidates, self.depth) < 1 or (time_budget_ms is not None and time_budget_ms <= 0):
             raise ValueError('invalid E52 search budget')
         self.last_search = {}
 
@@ -82,7 +85,16 @@ class HierarchicalMCTS:
             velocities = np.asarray([v.velocity for v in tracks.values()], float).reshape(-1, 2)
         if len(velocities) != len(particles): velocities = np.zeros_like(particles)
         predictions = np.clip(particles + velocities, -9., 9.)
-        captured = np.linalg.norm(predictions-pose, axis=1) < .45
+        prefix = track.get('positions')
+        positions = (prefix[:self.midpoint+1] if prefix is not None else
+                     np.linspace(obs.pose, pose, 51))
+        targets = np.clip(particles + np.linspace(0., 1., len(positions))[:, None, None]
+                          * velocities, -9., 9.)
+        captured = np.zeros(len(particles), dtype=bool)
+        if len(particles) and np.any(np.linalg.norm(positions[:, None] - targets, axis=2) < 1.05):
+            hits, _ = capture_samples(positions[:, None], targets, np.ones(1, bool),
+                                      np.ones(len(particles), bool), obs.local_map.boxes)
+            captured = hits >= 0
         weights = np.asarray(obs.belief.weights, float)
         if len(weights) != len(particles): weights = np.ones(len(particles), float)
         # Each support point represents a tracked target, not a fresh target at
@@ -93,7 +105,7 @@ class HierarchicalMCTS:
                         (len(particles) > 0 and np.all(captured)))
         belief = SimpleNamespace(particles=predictions[~captured], weights=weights[~captured],
                                  velocities=velocities[~captured], terminal=terminal,
-                                 predictions=predictions, captured_count=int(np.sum(captured)))
+                                 predictions=predictions, captured_mask=captured, captured_count=int(np.sum(captured)))
         delta = pose-obs.pose
         return replace(obs, pose=pose.copy(), velocity=track['velocities'][self.midpoint].copy(),
                        heading=float(np.arctan2(delta[1], delta[0])), acceleration=track["accelerations"][self.midpoint].copy(), cycle=obs.cycle+1,
@@ -165,7 +177,7 @@ class HierarchicalMCTS:
             max_speed=self.max_speed, continuous_speed=self.shared_speed, max_acceleration=self.max_acceleration, proxy=None)
         return stop['feasible'] and local_map.path_safe(stop['positions'])
 
-    def _expand(self, node, deadline):
+    def _expand(self, node, deadline, *, keep_prefix=False):
         node.expanded = True
         obs = node.obs
         if getattr(obs.belief, 'terminal', False): return
@@ -204,7 +216,8 @@ class HierarchicalMCTS:
         for k in range(self.max_candidates):
             for option, points in pools:
                 if k >= len(points): continue
-                if time.perf_counter() >= deadline or self.evaluations >= self.high_simulations:
+                if self.evaluations >= self.high_simulations or (deadline is not None and time.perf_counter() >= deadline):
+                    node.budget_blocked = self.evaluations >= self.high_simulations
                     self._normalize(node); return
                 endpoint = np.asarray(points[k], float)
                 duration = self.duration
@@ -239,7 +252,8 @@ class HierarchicalMCTS:
                 future = self._imagined(obs, track['positions'][self.midpoint], track)
                 logit = self.nar.score(obs, endpoint, option)[0] if self.nar is not None else 0.
                 node.children.append(Node(future, node.depth+1, node, endpoint.copy(), option,
-                    float(np.clip(logit, -20., 20.)), self._reward(obs, future, option, endpoint), duration=duration, pass_through=pass_through))
+                    float(np.clip(logit, -20., 20.)), self._reward(obs, future, option, endpoint), duration=duration, pass_through=pass_through,
+                    prefix=track["positions"][:self.midpoint+1] if keep_prefix else None))
         self._normalize(node)
 
     @staticmethod
@@ -255,10 +269,12 @@ class HierarchicalMCTS:
             return 0., False
         if self.nae_strategy != 'legacy' and not len(parent.obs.belief.particles):
             return 0., False
-        if self.nae_strategy != 'leaf_residual':
+        if self.nae_strategy not in ('leaf_residual', 'budget_leaf_residual'):
             self.nae_queries += 1
             return self.nae.score(parent.obs, node.endpoint, node.option)[1], True
-        if node.depth != self.depth or len(parent.children) < 2:
+        budget_leaf = (self.nae_strategy == 'budget_leaf_residual' and
+                       node.budget_blocked and not node.children)
+        if (node.depth != self.depth and not budget_leaf) or len(parent.children) < 2:
             return 0., False
         if node.value_bonus is None:
             peers = parent.children
@@ -272,12 +288,21 @@ class HierarchicalMCTS:
             # Calibrate against the feasible sibling actions at this node.
             # Keep the geometric edge reward and use bounded preferences only.
             centered = scores - np.median(scores)
-            for child, bonus in zip(peers, self.MAX_LEAF_BONUS * np.tanh(centered)):
+            bonuses = self.MAX_LEAF_BONUS * np.tanh(centered)
+            if getattr(self, "audit_ranking", False):
+                raw = np.array([child.reward for child in peers])
+                base_order = np.argsort(-raw, kind="stable")
+                adjusted_order = np.argsort(-(raw+self.gamma*bonuses), kind="stable")
+                self.nae_peer_groups += 1
+                self.nae_peer_reorders += int(not np.array_equal(base_order, adjusted_order))
+                self.nae_leaf_winner_changes += int(base_order[0] != adjusted_order[0])
+            for child, bonus in zip(peers, bonuses):
                 child.value_bonus = float(bonus)
         return node.value_bonus, False
 
     def act(self, observation):
-        started = time.perf_counter(); deadline = started + max(.001, (self.time_budget_ms-10.)/1000.)
+        started = time.perf_counter()
+        deadline = None if self.time_budget_ms is None else started + max(.001, (self.time_budget_ms-10.)/1000.)
         snapshot = LocalSnapshot(observation.local_map)
         # Support public protocol-shaped observations as well as AgentObservation.
         from solvers.e50_distributed_runtime import AgentObservation
@@ -286,9 +311,10 @@ class HierarchicalMCTS:
             observation.belief, observation.peer_messages, observation.previous_prefix, getattr(observation,"acceleration",None))
         self.midpoint = int(round(1./.02)); self.evaluations = 0
         self.nae_queries = 0
+        self.nae_peer_groups = self.nae_peer_reorders = self.nae_leaf_winner_changes = 0
         root = Node(obs); deepest = 0; simulations = 0
         self._expand(root, deadline)
-        while root.children and simulations < self.high_simulations and time.perf_counter() < deadline:
+        while root.children and simulations < self.high_simulations and (deadline is None or time.perf_counter() < deadline):
             node = root; path = [root]
             while node.children and node.depth < self.depth:
                 # An option is selected using aggregated child statistics, then an endpoint.
@@ -322,7 +348,14 @@ class HierarchicalMCTS:
             max_depth=deepest, nar_enabled=self.nar is not None, nae_enabled=self.nae is not None,
             nae_strategy=self.nae_strategy, nae_queries=self.nae_queries,
             root=[dict(endpoint=c.endpoint.tolist(), option=self.OPTIONS[c.option], duration=c.duration, visits=c.visits,
-                       value=c.total/max(1,c.visits), features=observation_features(obs,c.endpoint,level=c.option).tolist()) for c in root.children])
+                       pass_through=bool(c.pass_through), value=c.total/max(1,c.visits), features=observation_features(obs,c.endpoint,level=c.option).tolist()) for c in root.children])
+        if getattr(self, "audit_ranking", False):
+            self.last_search.update(peer_groups=self.nae_peer_groups, peer_reorders=self.nae_peer_reorders,
+                                    leaf_winner_changes=self.nae_leaf_winner_changes)
+        if selected is not None:
+            predicted = np.asarray(getattr(selected.obs.belief, 'predictions',
+                                           selected.obs.belief.particles), float).reshape(-1, 2)
+            self.last_search['predicted_targets'] = predicted.tolist()
         if selected is None:
             return LocalPlan(obs.agent_id, obs.pose, np.zeros(2), 0., 0, -1, False)
         return LocalPlan(obs.agent_id, selected.endpoint, selected.endpoint-obs.pose,

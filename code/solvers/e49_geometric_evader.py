@@ -86,6 +86,65 @@ class GeometricEvader:
         return SimpleNamespace(best_action=np.r_[out.ravel(),np.zeros(4)],success=True)
 
 
+class EvaderHMCTS(GeometricEvader):
+    """Privileged strong evader baseline with sparse window rewards.
+
+    The search keeps the existing legal motion model, but scores only terminal
+    events of each lookahead window.  This avoids dense distance shaping.
+    """
+    def __init__(self, *args, window=8, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.window = int(window)
+
+    def search(self, problem, state, turn=0):
+        if self.public is None:
+            speed = self.predicted_pursuer_speed
+            self.public = PublicMap(problem.obstacles, self.evader_speed if speed is None else speed)
+            if self.evader_speed != 1.:
+                self.public.edist = graph(self.public.vertices, self.public.boxes, self.evader_speed,
+                                          np.zeros(2, np.int64))
+        p = self.public
+        start = time.perf_counter()
+        ap = state[problem.active_idxs[2:], 0] > .5
+        pursuers = state[4:8, 0].reshape(2, 2)
+        out = np.zeros((2, 2))
+        for j in range(2):
+            if not ap[j]:
+                continue
+            q = state[2*j:2*j+2, 0].copy()
+            best = None
+            # Sparse event score at the end of the window. Immediate safety is
+            # a feasibility condition and never contributes a shaping reward.
+            for action in ACTIONS:
+                displacement = action * self.evader_speed
+                if not safe(q, displacement, self.evader_speed, p.boxes, np.zeros(2, np.int64)):
+                    continue
+                endpoint = q + displacement * self.window
+                if np.any(np.abs(endpoint) > 9.) or not safe(q, displacement, self.evader_speed, p.boxes, np.zeros(2, np.int64)):
+                    continue
+                predicted = pursuers.copy()
+                for k in range(self.window):
+                    for i in range(2):
+                        if ap[i]:
+                            predicted[i] += move(predicted[i], q + displacement * k,
+                                                 p.speed, p.vertices, p.dist, p.boxes, np.zeros(2, np.int64))
+                distances = np.linalg.norm(endpoint - predicted, axis=1)[ap]
+                if len(distances) == 0 or np.min(distances) < 1.:
+                    score = -100.
+                else:
+                    score = 2. + (8. if np.min(distances) >= 2. else 0.)
+                    if j == 0 and ap[1] and np.linalg.norm(endpoint - state[2:4, 0]) > 2.:
+                        score += 6.
+                key = (score, float(np.min(distances)) if len(distances) else -1.)
+                if best is None or key > best[0]:
+                    best = (key, displacement)
+            out[j] = np.zeros(2) if best is None else best[1]
+        self.records.append(dict(wall_ms=1000*(time.perf_counter()-start),
+            policy='evader_hmcts_sparse', window=self.window, dense_reward=False,
+            full_state=True, trained=False))
+        return SimpleNamespace(best_action=np.r_[out.ravel(), np.zeros(4)], success=True)
+
+
 def acceptance():
     p=PublicMap([],1.3);count=np.zeros(2,np.int64)
     cases=[(np.array([0.,0.]),np.array([[-2.,0.],[-8.,-8.]])),

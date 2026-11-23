@@ -177,7 +177,7 @@ def single_agent_endpoints(start, particles, weights, proxy=None, *, duration=2.
 def evaluate_minco_endpoint(start, endpoint, *, duration=2., sample_dt=.02,
                             start_velocity=None, start_acceleration=None,
                             max_speed=np.inf, max_acceleration=np.inf,
-                            proxy=None, samples=None, continuous_acceleration=False, continuous_speed=False, pass_through=False):
+                            proxy=None, samples=None, continuous_acceleration=False, continuous_speed=False, pass_through=False, terminal_velocity=None):
     """Compile one endpoint with the same quintic semantics used by E50.
 
     Returns a public score record suitable for a local MCTS value function.
@@ -192,7 +192,11 @@ def evaluate_minco_endpoint(start, endpoint, *, duration=2., sample_dt=.02,
     if v0.shape != (2,) or a0.shape != (2,):
         raise ValueError('invalid initial derivatives')
     goal_velocity = np.zeros(2)
-    if pass_through:
+    if terminal_velocity is not None:
+        goal_velocity = np.asarray(terminal_velocity, dtype=float)
+        if goal_velocity.shape != (2,) or not np.all(np.isfinite(goal_velocity)):
+            raise ValueError("invalid terminal velocity")
+    elif pass_through:
         # With fixed position and zero terminal acceleration, integrated
         # squared jerk is minimized when terminal snap vanishes. Project the
         # resulting free terminal velocity onto the speed ball.

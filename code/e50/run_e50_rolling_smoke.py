@@ -83,6 +83,33 @@ def _mask_history_observation(frame, boxes, *, lidar_obstacles=None, lidar_rays=
 
 
 
+def install_camera_belief_hooks():
+    # E49 installs the historical G/W belief classes process-locally.
+    # Redirect their imported negative-observation predicate for this
+    # deployment run; the frozen known-map benchmark keeps its original
+    # continuous map-line-of-sight semantics.
+    from solvers.e45_team_adapter import team_hidden_mask_camera
+    import learning.e45g_ppo as _g_belief
+    import learning.e45w_support_recovery as _w_belief
+    import e45c_belief_diagnostics as _diagnostic
+    import solvers.e45f_support_refinement as _refinement
+    import solvers.corner_estimator as _corner_estimator
+    _g_belief.team_hidden_mask = team_hidden_mask_camera
+    _w_belief.team_hidden_mask = team_hidden_mask_camera
+    _diagnostic.team_hidden_mask = team_hidden_mask_camera
+    _diagnostic.sensor_visible = lambda *args, **kwargs: True
+    _refinement.team_hidden_mask = team_hidden_mask_camera
+    # E49 may clone the diagnostic update function with a copied globals
+    # dictionary; redirect that copy as well for camera FOV negatives.
+    if hasattr(_diagnostic, 'RecordedTeamBelief'):
+        _diagnostic.RecordedTeamBelief.update_team.__globals__['team_hidden_mask'] = team_hidden_mask_camera
+    # A positive LiDAR return has already passed the physical occlusion
+    # test.  Do not recheck it with the legacy local-map line-of-sight
+    # predicate inside the frozen estimator.
+    _corner_estimator.visible = lambda *args, **kwargs: True
+    _corner_estimator.LIDAR_MODE = True
+
+
 def run(case_path, output, cycles=2, pursuer_speed=1.5, pursuer_acceleration=6., unknown_map=False,
         command_delay=0, drop_cycles=(), pose_delay=0, moving_evader=False,
         lidar_rays=256, lidar_inflation=.05, grid_inflation=.05,
@@ -102,30 +129,7 @@ def run(case_path, output, cycles=2, pursuer_speed=1.5, pursuer_acceleration=6.,
     from solvers.e50_local_scan_memory import LocalScanMemory
     from solvers.e50_trajectory_smoothing import rate_limit_displacement
     if unknown_map:
-        # E49 installs the historical G/W belief classes process-locally.
-        # Redirect their imported negative-observation predicate for this
-        # deployment run; the frozen known-map benchmark keeps its original
-        # continuous map-line-of-sight semantics.
-        from solvers.e45_team_adapter import team_hidden_mask_camera
-        import learning.e45g_ppo as _g_belief
-        import learning.e45w_support_recovery as _w_belief
-        import e45c_belief_diagnostics as _diagnostic
-        import solvers.e45f_support_refinement as _refinement
-        import solvers.corner_estimator as _corner_estimator
-        _g_belief.team_hidden_mask = team_hidden_mask_camera
-        _w_belief.team_hidden_mask = team_hidden_mask_camera
-        _diagnostic.team_hidden_mask = team_hidden_mask_camera
-        _diagnostic.sensor_visible = lambda *args, **kwargs: True
-        _refinement.team_hidden_mask = team_hidden_mask_camera
-        # E49 may clone the diagnostic update function with a copied globals
-        # dictionary; redirect that copy as well for camera FOV negatives.
-        if hasattr(_diagnostic, 'RecordedTeamBelief'):
-            _diagnostic.RecordedTeamBelief.update_team.__globals__['team_hidden_mask'] = team_hidden_mask_camera
-        # A positive LiDAR return has already passed the physical occlusion
-        # test.  Do not recheck it with the legacy local-map line-of-sight
-        # predicate inside the frozen estimator.
-        _corner_estimator.visible = lambda *args, **kwargs: True
-        _corner_estimator.LIDAR_MODE = True
+        install_camera_belief_hooks()
     opponent_factory = None
     if rootpuct_evader:
         from e49_rules import make_opponent as opponent_factory

@@ -5,7 +5,6 @@ from local_observation import clear_segments
 from solvers.e50_distributed_geometry import (DEFAULT_MAX_ACCELERATION, evaluate_minco_endpoint,
     reachable_waypoint, braking_waypoints, validate_max_acceleration)
 from solvers.e50_interfaces import sample_quintic_at
-from solvers.e49_geometric_evader import ACTIONS
 
 
 class EvaderMinco:
@@ -19,7 +18,6 @@ class EvaderMinco:
         self.max_acceleration = (DEFAULT_MAX_ACCELERATION if max_acceleration is None
                                  else validate_max_acceleration(max_acceleration))
         self.samples = samples_per_cycle
-        self.displacements = max_speed * ACTIONS / np.maximum(1., np.linalg.norm(ACTIONS, axis=1, keepdims=True))
         self.tail = {}
 
     def _safe(self, points):
@@ -41,16 +39,33 @@ class EvaderMinco:
                 return dict(zip(('positions', 'velocities', 'accelerations'), arrays))
         return None
 
-    def prefix(self, agent, position, preferred_displacement):
+    def prefix(self, agent, position, preferred_displacement, *, waypoint=False, cruise_track=None):
         n = self.samples
         previous = self.tail.get(agent)
         velocity = np.zeros(2) if previous is None else previous['velocities'][0]
         acceleration = np.zeros(2) if previous is None else previous['accelerations'][0]
-        alternatives = self.displacements
-        if np.linalg.norm(preferred_displacement) > 1e-9:
-            alternatives = alternatives[np.any(alternatives != 0., axis=1)]
-        order = np.argsort(np.linalg.norm(alternatives - preferred_displacement, axis=1), kind='stable')
-        for action in alternatives[order]:
+        if cruise_track is not None:
+            points, v, a = sample_quintic_at(cruise_track['coefficients'], np.arange(n+1)/n)
+            stop = self._braking_tail(points[-1], v[-1], a[-1])
+            if stop is not None and self._safe(points):
+                self.tail[agent] = stop
+                return dict(positions=points, velocities=v, accelerations=a), 'cruise'
+        requested = np.asarray(preferred_displacement, dtype=float)
+        length = np.linalg.norm(requested)
+        max_distance = self.max_speed * (2. if waypoint else 1.)
+        if length > max_distance:
+            requested = requested * (max_distance / length)
+
+        # Try the policy heading exactly. Backups rotate with that heading.
+        alternatives = [requested]
+        if length > 1e-9:
+            perpendicular = np.array([-requested[1], requested[0]])
+            for angle in np.deg2rad((30., 60., 90., 135.)):
+                forward = np.cos(angle) * requested
+                side = np.sin(angle) * perpendicular
+                alternatives.extend((forward + side, forward - side))
+            alternatives.append(-requested)
+        for action in alternatives:
             endpoint = position + action
             if self.continuous_speed:
                 endpoint = reachable_waypoint(position, endpoint, velocity, 2., self.max_speed, self.max_acceleration)
