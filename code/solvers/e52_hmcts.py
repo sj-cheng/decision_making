@@ -210,6 +210,11 @@ class HierarchicalMCTS:
             if self.shared_speed and option != 3:
                 points = [reachable_waypoint(obs.pose, point, obs.velocity, self.duration,
                                              self.max_speed, self.max_acceleration) for point in points]
+            generator = getattr(self, 'waypoint_generator', None)
+            if generator is not None and node.depth == 0 and option == int(not len(particles)):
+                # Reserve two slots in a non-braking option. Learned endpoints
+                # undergo the same polynomial, path and braking checks below.
+                points = list(points[:self.max_candidates-2]) + list(generator.propose(obs))
             pools.append((option, list(points)[:self.max_candidates]))
         # Round-robin options prevents the time budget from starving exploration.
         seen = set()
@@ -250,16 +255,19 @@ class HierarchicalMCTS:
                         samples = track[name]
                         track[name] = np.concatenate((samples, np.repeat(samples[-1:], self.midpoint+1-len(samples), axis=0)))
                 future = self._imagined(obs, track['positions'][self.midpoint], track)
-                logit = self.nar.score(obs, endpoint, option)[0] if self.nar is not None else 0.
+                logit = self.nar.score(obs, endpoint, option)[0] if self.nar is not None and not hasattr(self.nar, 'rank_actions') else 0.
                 node.children.append(Node(future, node.depth+1, node, endpoint.copy(), option,
                     float(np.clip(logit, -20., 20.)), self._reward(obs, future, option, endpoint), duration=duration, pass_through=pass_through,
                     prefix=track["positions"][:self.midpoint+1] if keep_prefix else None))
         self._normalize(node)
 
-    @staticmethod
-    def _normalize(node):
+    def _normalize(self, node):
         if node.children:
-            logits = np.array([x.prior for x in node.children]); probs = np.exp(logits-logits.max()); probs /= probs.sum()
+            logits = np.array([x.prior for x in node.children])
+            if hasattr(self.nar, 'rank_actions'):
+                logits = np.clip(self.nar.rank_actions(node.obs, [c.endpoint for c in node.children],
+                                 [c.option for c in node.children], [c.duration for c in node.children]), -20, 20)
+            probs = np.exp(logits-logits.max()); probs /= probs.sum()
             for child, prior in zip(node.children, probs): child.prior = float(prior)
 
     def _leaf_value(self, node):
@@ -350,6 +358,8 @@ class HierarchicalMCTS:
             root=[dict(endpoint=c.endpoint.tolist(), option=self.OPTIONS[c.option], duration=c.duration, visits=c.visits,
                        pass_through=bool(c.pass_through), value=c.total/max(1,c.visits), features=observation_features(obs,c.endpoint,level=c.option).tolist()) for c in root.children])
         if getattr(self, "audit_ranking", False):
+            self.last_search['selected_root_action'] = (None if selected is None else
+                (selected.endpoint.tolist(),float(selected.duration),bool(selected.pass_through)))
             self.last_search.update(peer_groups=self.nae_peer_groups, peer_reorders=self.nae_peer_reorders,
                                     leaf_winner_changes=self.nae_leaf_winner_changes)
         if selected is not None:

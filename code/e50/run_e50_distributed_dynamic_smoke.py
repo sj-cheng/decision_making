@@ -92,7 +92,7 @@ def _safe_executed_prefix(start, positions, local_map):
     return previous, truncated
 
 
-def run(case_path, output, cycles=20, lidar_rays=256, seed=17, delay=0, drop_cycles=(), rootpuct=False, rootpuct_simulations=20, leaf_value_checkpoint=None, e52=False, e52_checkpoint=None, e52_mode="both", e52_depth=None, e52_budget=256, e52_time_ms=None, e52_nae_strategy='legacy', offline_branch=None, e52_advantage_checkpoint=None, *, geometric_evader_speed=None, evader_minco=False, max_acceleration=None, shared_max_speed=None, evader_hmcts=False, evader_window=8, e53_depth=3, e53_simulations=256, pursuer_structure="local", pursuer_speed_cap=None, decision_hook=None, audit_nae=False, evader_cruise=False, environment_horizon_floor=0, legacy_policy=None):
+def run(case_path, output, cycles=20, lidar_rays=256, seed=17, delay=0, drop_cycles=(), rootpuct=False, rootpuct_simulations=20, leaf_value_checkpoint=None, e52=False, e52_checkpoint=None, e52_mode="both", e52_depth=None, e52_budget=256, e52_time_ms=None, e52_nae_strategy='legacy', offline_branch=None, e52_advantage_checkpoint=None, *, geometric_evader_speed=None, evader_minco=False, max_acceleration=None, shared_max_speed=None, evader_hmcts=False, evader_window=8, e53_depth=3, e53_simulations=256, pursuer_structure="local", pursuer_speed_cap=None, decision_hook=None, audit_nae=False, evader_cruise=False, environment_horizon_floor=0, legacy_policy=None, nar_override=None, nae_override=None, waypoint_generator=None):
     if evader_cruise and not evader_hmcts:
         raise ValueError("cruise candidates require the H-MCTS evader")
     if pursuer_structure not in ("local", "coordinated", "joint_oracle", "joint_shared", "joint_global"):
@@ -220,6 +220,14 @@ def run(case_path, output, cycles=20, lidar_rays=256, seed=17, delay=0, drop_cyc
         controllers = {i: make_local_geometry_mcts(value_net=value_net, simulations=8,
                                                     seed=seed+i, duration=2., max_candidates=8,
                                                     candidate_samples=128) for i in range(2)}
+    if nar_override is not None:
+        for controller in controllers.values():
+            controller.nar = nar_override
+    for controller in controllers.values():
+        if nae_override is not None:
+            controller.nae = nae_override
+        if waypoint_generator is not None:
+            controller.waypoint_generator = waypoint_generator
     if audit_nae:
         for controller in controllers.values():
             controller.audit_ranking = True

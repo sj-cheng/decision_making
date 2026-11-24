@@ -132,6 +132,8 @@ class Shadow:
                           (record['root'][j]['visits'],record['root'][j]['value']),reverse=True)
         self.rows.append(dict(cycle=cycle,queried=[s['nae_queries']>0 for s in saved],
                          rank_changed=[rank(saved[i])!=rank(audit[i]) for i in range(2)],
+                         root_action_changed=[saved[i].get('selected_root_action') != audit[i].get('selected_root_action')
+                                              for i in range(2)],
                          executed_plan_changed=changed))
         if any(changed) and self.flip is None:
             self.flip=cycle
