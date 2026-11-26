@@ -92,7 +92,9 @@ def _safe_executed_prefix(start, positions, local_map):
     return previous, truncated
 
 
-def run(case_path, output, cycles=20, lidar_rays=256, seed=17, delay=0, drop_cycles=(), rootpuct=False, rootpuct_simulations=20, leaf_value_checkpoint=None, e52=False, e52_checkpoint=None, e52_mode="both", e52_depth=None, e52_budget=256, e52_time_ms=None, e52_nae_strategy='legacy', offline_branch=None, e52_advantage_checkpoint=None, *, geometric_evader_speed=None, evader_minco=False, max_acceleration=None, shared_max_speed=None, evader_hmcts=False, evader_window=8, e53_depth=3, e53_simulations=256, pursuer_structure="local", pursuer_speed_cap=None, decision_hook=None, audit_nae=False, evader_cruise=False, environment_horizon_floor=0, legacy_policy=None, nar_override=None, nae_override=None, waypoint_generator=None):
+def run(case_path, output, cycles=20, lidar_rays=256, seed=17, delay=0, drop_cycles=(), rootpuct=False, rootpuct_simulations=20, leaf_value_checkpoint=None, e52=False, e52_checkpoint=None, e52_mode="both", e52_depth=None, e52_budget=256, e52_time_ms=None, e52_nae_strategy='legacy', offline_branch=None, e52_advantage_checkpoint=None, *, geometric_evader_speed=None, evader_minco=False, max_acceleration=None, shared_max_speed=None, evader_hmcts=False, evader_window=8, e53_depth=3, e53_simulations=256, pursuer_structure="local", pursuer_speed_cap=None, decision_hook=None, audit_nae=False, evader_cruise=False, environment_horizon_floor=0, legacy_policy=None, nar_override=None, nae_override=None, waypoint_generator=None, search_experiment=None, evader_factory=None, direct_policy=None):
+    if direct_policy is not None and (not e52 or pursuer_structure!='local' or legacy_policy is not None):
+        raise ValueError('direct waypoint policy requires local E52 execution')
     if evader_cruise and not evader_hmcts:
         raise ValueError("cruise candidates require the H-MCTS evader")
     if pursuer_structure not in ("local", "coordinated", "joint_oracle", "joint_shared", "joint_global"):
@@ -163,7 +165,7 @@ def run(case_path, output, cycles=20, lidar_rays=256, seed=17, delay=0, drop_cyc
             raise ValueError('geometric evader requires legal initial positions')
         if geometric_evader_speed is None:
             geometric_evader_speed = shared_max_speed or SHARED_SPEED_LIMIT
-        opponent = (EvaderHMCTS(evader_speed=geometric_evader_speed,
+        opponent = ((evader_factory or EvaderHMCTS)(evader_speed=geometric_evader_speed,
                                  max_acceleration=max_acceleration or SHARED_ACCELERATION_LIMIT,
                                  depth=e53_depth, simulations=e53_simulations,
                                  window=evader_window, seed=seed, cruise=evader_cruise) if evader_hmcts else
@@ -251,7 +253,10 @@ def run(case_path, output, cycles=20, lidar_rays=256, seed=17, delay=0, drop_cyc
     braking_tails = {}
     braking_remainders = {}
     prefix_truncations = 0
+    time_team = (direct_policy is not None or getattr(search_experiment, 'measure_team_latency', False))
     for cycle in range(int(cycles)):
+        if time_team:
+            decision_start = time.perf_counter()
         delivered = bus.deliver(cycle, mailboxes)
         observations = {}; plans = {}; sensor_stats = {}
         minco_records = {}
@@ -310,7 +315,15 @@ def run(case_path, output, cycles=20, lidar_rays=256, seed=17, delay=0, drop_cyc
                                    acceleration=accelerations[aid].copy() if e52 else None)
             observations[aid] = obs
             if not full_joint and legacy_policy is None:
-                plans[aid] = controllers[aid].act(obs)
+                if search_experiment is not None:
+                    search_experiment.begin(controllers[aid], obs, len(captured_targets))
+                if direct_policy is None:
+                    plans[aid] = controllers[aid].act(obs)
+                else:
+                    started = time.perf_counter()
+                    plans[aid] = direct_policy.act(obs, scan, len(captured_targets))
+                    controllers[aid].last_search = dict(root=[], simulations=0, evaluations=0,
+                        elapsed_ms=(time.perf_counter()-started)*1000)
             if offline_branch is not None:
                 distances = np.linalg.norm(obs.belief.particles - obs.pose, axis=1)
                 sensor_stats[str(aid)]['nearest_belief'] = float(min(distances)) if len(distances) else None
@@ -341,6 +354,8 @@ def run(case_path, output, cycles=20, lidar_rays=256, seed=17, delay=0, drop_cyc
                 oracle_targets=targets[active_e] if pursuer_structure == "joint_oracle" else None,
                 mode="oracle" if pursuer_structure == "joint_oracle" else "belief")
             plans = {i: plans_list[i] for i in (0, 1)}
+        if time_team:
+            coordination['team_decision_ms'] = (time.perf_counter() - decision_start)*1000
         if decision_hook is not None:
             decision_hook(cycle, observations, controllers, plans)
         if offline_branch is not None and offline_branch.cycle == cycle:

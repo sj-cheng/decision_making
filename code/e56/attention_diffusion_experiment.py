@@ -20,15 +20,15 @@ BUDGETS = (256, 128)
 
 class Attention(nn.Module):
     """One action token attends to belief, teammate, and measured obstacle tokens."""
-    def __init__(self):
+    def __init__(self,width=64,layers=2):
         super().__init__()
-        self.action = nn.Linear(5,64)
-        self.target = nn.Linear(4,64)
-        self.peer = nn.Linear(5,64)
-        self.obstacle = nn.Linear(5,64)
-        layer = nn.TransformerEncoderLayer(64,4,128,dropout=0.,batch_first=True)
-        self.encoder = nn.TransformerEncoder(layer,2,enable_nested_tensor=False)
-        self.head = nn.Linear(64,1)
+        self.action = nn.Linear(5,width)
+        self.target = nn.Linear(4,width)
+        self.peer = nn.Linear(5,width)
+        self.obstacle = nn.Linear(5,width)
+        layer = nn.TransformerEncoderLayer(width,4,2*width,dropout=0.,batch_first=True)
+        self.encoder = nn.TransformerEncoder(layer,layers,enable_nested_tensor=False)
+        self.head = nn.Linear(width,1)
 
     def forward(self,x):
         boxes=x[:,14:].reshape(-1,4,5)

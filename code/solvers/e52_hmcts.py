@@ -184,6 +184,7 @@ class HierarchicalMCTS:
         particles = np.asarray(obs.belief.particles, float).reshape(-1, 2)
         # Each high-level option has its own geometry, then a lower endpoint choice.
         pools = []
+        proposal_range = None
         braking = self._braking_actions(obs)
         for option in range(4):
             if option == 0 and not len(particles): continue
@@ -214,8 +215,13 @@ class HierarchicalMCTS:
             if generator is not None and node.depth == 0 and option == int(not len(particles)):
                 # Reserve two slots in a non-braking option. Learned endpoints
                 # undergo the same polynomial, path and braking checks below.
-                points = list(points[:self.max_candidates-2]) + list(generator.propose(obs))
+                anchors = list(points[:self.max_candidates-2])
+                proposal_range = (option, len(anchors))
+                points = anchors + list(generator.propose(obs))
             pools.append((option, list(points)[:self.max_candidates]))
+        shortlist = getattr(self, 'candidate_shortlist', None)
+        if shortlist is not None:
+            pools = shortlist(obs, pools)
         # Round-robin options prevents the time budget from starving exploration.
         seen = set()
         for k in range(self.max_candidates):
@@ -256,6 +262,8 @@ class HierarchicalMCTS:
                         track[name] = np.concatenate((samples, np.repeat(samples[-1:], self.midpoint+1-len(samples), axis=0)))
                 future = self._imagined(obs, track['positions'][self.midpoint], track)
                 logit = self.nar.score(obs, endpoint, option)[0] if self.nar is not None and not hasattr(self.nar, 'rank_actions') else 0.
+                if proposal_range is not None and proposal_range[0] == option and k >= proposal_range[1] and hasattr(generator, "record_candidate"):
+                    generator.record_candidate(obs.agent_id, len(node.children))
                 node.children.append(Node(future, node.depth+1, node, endpoint.copy(), option,
                     float(np.clip(logit, -20., 20.)), self._reward(obs, future, option, endpoint), duration=duration, pass_through=pass_through,
                     prefix=track["positions"][:self.midpoint+1] if keep_prefix else None))
@@ -267,12 +275,18 @@ class HierarchicalMCTS:
             if hasattr(self.nar, 'rank_actions'):
                 logits = np.clip(self.nar.rank_actions(node.obs, [c.endpoint for c in node.children],
                                  [c.option for c in node.children], [c.duration for c in node.children]), -20, 20)
+            if getattr(self.nar, 'use_edge_value', False):
+                for child, estimate in zip(node.children, self.nar.edge_values):
+                    child.edge_estimate = float(estimate)
             probs = np.exp(logits-logits.max()); probs /= probs.sum()
             for child, prior in zip(node.children, probs): child.prior = float(prior)
 
     def _leaf_value(self, node):
         """Return an optional edge-Q replacement or a bounded ranking bonus."""
         parent = node.parent
+        if (node.visits == 0 and hasattr(node, 'edge_estimate')
+                and not getattr(node.obs.belief, 'terminal', False)):
+            return node.edge_estimate, True
         if self.nae is None or parent is None or getattr(node.obs.belief, 'terminal', False):
             return 0., False
         if self.nae_strategy != 'legacy' and not len(parent.obs.belief.particles):
@@ -304,6 +318,8 @@ class HierarchicalMCTS:
                 self.nae_peer_groups += 1
                 self.nae_peer_reorders += int(not np.array_equal(base_order, adjusted_order))
                 self.nae_leaf_winner_changes += int(base_order[0] != adjusted_order[0])
+            if hasattr(self.nae, 'record_leaf'):
+                self.nae.record_leaf(self, parent, scores, bonuses)
             for child, bonus in zip(peers, bonuses):
                 child.value_bonus = float(bonus)
         return node.value_bonus, False
@@ -322,6 +338,9 @@ class HierarchicalMCTS:
         self.nae_peer_groups = self.nae_peer_reorders = self.nae_leaf_winner_changes = 0
         root = Node(obs); deepest = 0; simulations = 0
         self._expand(root, deadline)
+        experiment = getattr(self, "search_experiment", None)
+        if experiment is not None:
+            experiment.root_ready(root)
         while root.children and simulations < self.high_simulations and (deadline is None or time.perf_counter() < deadline):
             node = root; path = [root]
             while node.children and node.depth < self.depth:
@@ -333,7 +352,8 @@ class HierarchicalMCTS:
                     return sum(c.total for c in children)/max(1,n) + 1.4*sum(c.prior for c in children)*np.sqrt(node.visits+1)/(1+n)
                 option = max(options, key=option_score)
                 node = max((c for c in node.children if c.option==option),
-                    key=lambda c: c.total/max(1,c.visits)+1.4*c.prior*np.sqrt(path[-1].visits+1)/(1+c.visits))
+                    key=lambda c: c.total/max(1,c.visits)+1.4*c.prior*np.sqrt(path[-1].visits+1)/(1+c.visits)
+                    + (getattr(c, "value_hint", 0.)/(1+c.visits) if experiment is not None and node is root else 0.))
                 path.append(node)
                 if node.visits == 0: break
             if node.depth < self.depth and not node.expanded and node.visits:
@@ -349,6 +369,9 @@ class HierarchicalMCTS:
                     value = child.reward + self.gamma*value
                 child.visits += 1; child.total += value
             root.visits += 1; simulations += 1
+            if experiment is not None and simulations in (32, 64, 96):
+                if experiment.checkpoint(root, simulations):
+                    break
         visited = [c for c in root.children if c.visits]
         selected = max(visited, key=lambda c:(c.visits,c.total/c.visits)) if visited else max(root.children, key=lambda c:c.reward, default=None)
         elapsed = (time.perf_counter()-started)*1000.
